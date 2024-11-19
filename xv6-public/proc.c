@@ -7,7 +7,7 @@
 #include "proc.h"
 #include "spinlock.h"
 #include "wmap.h"
-#include "elf.h"
+#include "vm.c"
 
 struct {
   struct spinlock lock;
