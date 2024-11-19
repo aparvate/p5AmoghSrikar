@@ -6,6 +6,7 @@
 #include "memlayout.h"
 #include "mmu.h"
 #include "proc.h"
+#include "wmap.h"
 
 int
 sys_fork(void)
@@ -96,7 +97,17 @@ sys_wmap(void){
   int length, flags, fd;
 
   if (argint(0, (int*) &addr) < 0 || argint(1, &length) || argint(2, &flags) || argint(3, &fd) < 0) {
-    return -1;
+    return FAILED;
   }
   return wmapHelper(addr, length, flags, fd);
+}
+
+uint
+sys_wunmap(void){
+  uint addr;
+
+  if (argint(0, (int*) &addr) < 0){
+    return FAILED;
+  }
+  return wunmapHelper(addr);
 }

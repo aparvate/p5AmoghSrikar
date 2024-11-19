@@ -605,3 +605,7 @@ wmapHelper(uint addr, int length, int flags, int fd) {
 
   return addr;
 }
+
+int wunmapHelper(uint addr) {
+  
+}
