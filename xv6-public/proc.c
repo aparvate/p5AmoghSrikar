@@ -534,27 +534,25 @@ procdump(void)
   }
 }
 
+int
 wmap_helper(void) {
   uint addr;
-  int length;
-  int flags;
-  int fd;
+  int length, flags, fd;
 
   if (argint(0, (int*) &addr) < 0 || argint(1, &length) || argint(2, &flags) || argint(3, &fd) < 0) {
     return FAILED;
   }
 
-  // fixed and shared MUST be set (according to Piazza @890)
   if (!(flags & MAP_FIXED) || !(flags & MAP_SHARED)) {
     return FAILED;
   }
-
   if (length <= 0) {
     return FAILED;
   }
-
-  // making sure the thing is within the bounds and is page-aligned
-  if (addr % PGSIZE != 0 || addr < KERNSTART || addr + length > KERNBASE) {
+  if (addr % PGSIZE != 0) {
+    return FAILED;
+  }
+  if (addr < KERNSTART || addr + length > KERNBASE){
     return FAILED;
   }
 
