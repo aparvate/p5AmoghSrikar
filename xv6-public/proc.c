@@ -6,6 +6,7 @@
 #include "x86.h"
 #include "proc.h"
 #include "spinlock.h"
+#include "wmap.h"
 
 struct {
   struct spinlock lock;
@@ -531,4 +532,85 @@ procdump(void)
     }
     cprintf("\n");
   }
+}
+
+wmap_helper(void) {
+  uint addr;
+  int length;
+  int flags;
+  int fd;
+
+  if (argint(0, (int*) &addr) < 0 || argint(1, &length) || argint(2, &flags) || argint(3, &fd) < 0) {
+    return FAILED;
+  }
+
+  // fixed and shared MUST be set (according to Piazza @890)
+  if (!(flags & MAP_FIXED) || !(flags & MAP_SHARED)) {
+    return FAILED;
+  }
+
+  if (length <= 0) {
+    return FAILED;
+  }
+
+  // making sure the thing is within the bounds and is page-aligned
+  if (addr % PGSIZE != 0 || addr < KERNSTART || addr + length > KERNBASE) {
+    return FAILED;
+  }
+
+  struct proc* curr_p = myproc();
+  struct file *file;
+
+  // checking the map_anonymous case
+  if (flags & MAP_ANONYMOUS) {
+    file = 0;
+  } 
+  else {
+    if (fd < 0 || fd >= NOFILE || (file = curr_p -> ofile[fd]) == 0) {
+      return FAILED;
+    }
+  }
+
+  // check if region is already allocated or avaialble
+  for (uint a = addr; a < addr + length; a += PGSIZE) {
+
+    // get the PTE for the curr VA
+    pte_t *pte = walkpgdir(curr_p->pgdir, (char *)a, 0);
+
+    // if there is a PTE, then the address is already mapped so return failed
+    if (pte && (*pte & PTE_P)) {
+      return FAILED;
+    }
+  }
+
+  struct map_wmap *map = 0;
+
+    // find the first empty space in the wmaps array (all of the maps), and make map point to it
+    for (int i = 0; i < 16; i++) {
+      if (curr_p->maps[i].length == 0) {
+        map = &curr_p->maps[i];
+        break;
+      }
+    }
+
+    // if there was no more empty space
+    if (!map) {
+        return FAILED;
+    }
+
+    // fill in that empty space with the details of our wmap call
+    map->addr = addr;
+    map->length = length;
+    map->flags = flags;
+    map->file = file;
+    map->fd = fd;
+
+  for (uint a = addr; a < addr + length; a += PGSIZE) {
+
+    // this time we create the PTE and set it to 0 so we know it's not present so a page fault will occur
+    pte_t *pte = walkpgdir(curr_p->pgdir, (char *)a, 1);
+    *pte = 0;
+  }
+
+  return addr;
 }

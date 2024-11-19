@@ -89,3 +89,8 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+uint
+sys_wmap(void){
+  return wmapHelper();
+}
