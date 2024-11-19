@@ -7,7 +7,6 @@
 #include "proc.h"
 #include "traps.h"
 #include "spinlock.h"
-#include "vm.h"
 
 // Interrupt descriptor table (shared by all CPUs).
 struct gatedesc idt[256];
