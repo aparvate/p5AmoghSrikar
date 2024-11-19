@@ -667,3 +667,63 @@ int va2paHelper(uint va){
 
     return pa | offset; // Combine the physical page address with the offset
 }
+
+int
+getwmapinfoHelper(struct wmapinfo *wminfo) {
+    struct proc *curproc = myproc(); // Get the current process
+    if (!curproc) {
+        return FAILED; // No valid process context
+    }
+
+    if (!wminfo) {
+        return FAILED; // Invalid pointer to wmapinfo struct
+    }
+
+    int mmap_count = 0; // Counter for total memory mappings
+
+    // Initialize the wmapinfo structure
+    wminfo->total_mmaps = 0;
+    for (int i = 0; i < MAX_WMMAP_INFO; i++) {
+        wminfo->addr[i] = 0;
+        wminfo->length[i] = 0;
+        wminfo->n_loaded_pages[i] = 0;
+    }
+
+    // Iterate over all memory mappings in the current process
+    for (int i = 0; i < 16; i++) {
+        struct map_wmap *map = &curproc->maps[i];
+
+        // Skip unused or invalid mappings
+        if (map->addr == 0 || map->length <= 0) {
+            continue;
+        }
+
+        // Check if we've exceeded MAX_WMMAP_INFO
+        if (mmap_count >= MAX_WMMAP_INFO) {
+            return FAILED; // Too many memory mappings
+        }
+
+        // Populate address and length in the wmapinfo struct
+        wminfo->addr[mmap_count] = map->addr;
+        wminfo->length[mmap_count] = map->length;
+
+        // Calculate the number of loaded pages for this mapping
+        int loaded_pages = 0;
+        for (uint a = map->addr; a < map->addr + map->length; a += PGSIZE) {
+            pte_t *pte = walkpgdir(curproc->pgdir, (char *)a, 0);
+
+            if (pte && (*pte & PTE_P)) {
+                loaded_pages++;
+            }
+        }
+        wminfo->n_loaded_pages[mmap_count] = loaded_pages;
+
+        mmap_count++;
+    }
+
+    // Update the total_mmaps field
+    wminfo->total_mmaps = mmap_count;
+
+    return SUCCESS; // Successfully populated the wmapinfo struct
+}
+
