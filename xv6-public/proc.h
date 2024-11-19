@@ -65,3 +65,6 @@ struct proc {
 //   original data and bss
 //   fixed-size stack
 //   expandable heap
+
+int wmapHelper(uint addr, int length, int flags, int fd);
+int wunmapHelper(uint addr);
