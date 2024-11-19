@@ -92,5 +92,11 @@ sys_uptime(void)
 
 uint
 sys_wmap(void){
-  return wmapHelper();
+  uint addr;
+  int length, flags, fd;
+
+  if (argint(0, (int*) &addr) < 0 || argint(1, &length) || argint(2, &flags) || argint(3, &fd) < 0) {
+    return -1;
+  }
+  return wmapHelper(addr, length, flags, fd);
 }

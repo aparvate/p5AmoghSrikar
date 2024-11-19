@@ -535,14 +535,7 @@ procdump(void)
 }
 
 int
-wmap_helper(void) {
-  uint addr;
-  int length, flags, fd;
-
-  if (argint(0, (int*) &addr) < 0 || argint(1, &length) || argint(2, &flags) || argint(3, &fd) < 0) {
-    return FAILED;
-  }
-
+wmapHelper(uint addr, int length, int flags, int fd) {
   if (!(flags & MAP_FIXED) || !(flags & MAP_SHARED)) {
     return FAILED;
   }
