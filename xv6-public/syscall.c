@@ -105,6 +105,7 @@ extern int sys_write(void);
 extern int sys_uptime(void);
 extern int sys_wmap(void);
 extern int sys_wunmap(void);
+extern uint sys_va2pa(void);
 
 static int (*syscalls[])(void) = {
 [SYS_fork]    sys_fork,
@@ -130,6 +131,7 @@ static int (*syscalls[])(void) = {
 [SYS_close]   sys_close,
 [SYS_wmap]    sys_wmap,
 [SYS_wunmap]  sys_wunmap,
+[SYS_va2pa] sys_va2pa,
 };
 
 void
@@ -147,3 +149,5 @@ syscall(void)
     curproc->tf->eax = -1;
   }
 }
+
+

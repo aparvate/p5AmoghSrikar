@@ -111,3 +111,13 @@ sys_wunmap(void){
   }
   return wunmapHelper(addr);
 }
+
+  uint
+  sys_va2pa(void){
+    uint va;
+      if (argint(0, (int *)&va) < 0) { 
+        return -1;
+    }
+    return va2paHelper(va);
+
+  }

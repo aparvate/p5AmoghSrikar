@@ -646,3 +646,24 @@ int wunmapHelper(uint addr) {
 
   return 0;  // Success
 }
+
+int va2paHelper(uint va){
+    struct proc *curproc = myproc(); // Get the current process
+    pde_t *pgdir = curproc->pgdir;  // Get the page directory of the process
+
+    // Translate the virtual address to the corresponding physical address
+    pte_t *pte = walkpgdir(pgdir, (const void *)va, 0);
+
+    // If the PTE doesn't exist or the page isn't present, return -1
+    if (!pte || !(*pte & PTE_P)) {
+        return -1;
+    }
+
+    // Extract the physical page address from the PTE
+    uint pa = PTE_ADDR(*pte);
+
+    // Add the offset within the page
+    uint offset = va & 0xFFF; // Lower 12 bits of the virtual address
+
+    return pa | offset; // Combine the physical page address with the offset
+}
