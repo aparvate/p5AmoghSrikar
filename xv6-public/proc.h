@@ -40,7 +40,7 @@ struct map_wmap {
   int flags;
   struct file *file;
   int fd;
-}
+};
 
 // Per-process state
 struct proc {
