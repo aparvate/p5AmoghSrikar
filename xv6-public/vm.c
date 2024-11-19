@@ -212,6 +212,7 @@ loaduvm(pde_t *pgdir, char *addr, struct inode *ip, uint offset, uint sz, uint f
       n = PGSIZE;
     if(readi(ip, P2V(pa), offset+i, n) != n)
       return -1;
+    
   }
   return 0;
 }
