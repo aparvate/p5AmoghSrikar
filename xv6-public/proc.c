@@ -607,5 +607,42 @@ wmapHelper(uint addr, int length, int flags, int fd) {
 }
 
 int wunmapHelper(uint addr) {
-  
+  struct proc* curr_p = myproc();
+  struct map_wmap *map = 0;
+
+  if (addr % PGSIZE != 0) {
+    return FAILED;
+  }
+  if (addr < KERNSTART || addr > KERNBASE){
+    return FAILED;
+  }
+  for (int i = 0; i < 16; i ++){
+    if (curr_p->maps[i].addr == addr){
+      map = &curr_p->maps[i];
+    }
+  }
+
+  // Write back data for file-backed mappings with MAP_SHARED
+  if (map->file && (map->flags & MAP_SHARED)) {
+    uint offset = 0;
+    for (uint a = map->addr; a < map->addr + map->length; a += PGSIZE, offset += PGSIZE) {
+      pte_t *pte = walkpgdir(curr_p->pgdir, (char *)a, 0);
+      if (pte && (*pte & PTE_P)) {
+        char *data = (char *)P2V(PTE_ADDR(*pte));
+        filewrite(map->file, data, offset);
+      }
+    }
+  }
+
+  // Clear the metadata for the mapping
+  map->addr = 0;
+  map->length = 0;
+  map->flags = 0;
+  map->file = 0;
+  map->fd = -1;
+
+  // Flush the TLB
+  lcr3(V2P(curr_p->pgdir));
+
+  return 0;  // Success
 }
