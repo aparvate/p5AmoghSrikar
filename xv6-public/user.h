@@ -25,6 +25,7 @@ int sleep(int);
 int uptime(void);
 uint wmap(uint addr, int length, int flags, int fd);
 int wunmap(uint addr);
+int va2pa(uint va);
 struct wmapinfo;
 int getwmapinfo(struct wmapinfo*);
 
