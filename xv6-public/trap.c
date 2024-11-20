@@ -116,8 +116,8 @@ trap(struct trapframe *tf)
       cprintf("Segmentation Fault\n");
       // kill the process
       p->killed = 1;
-      break;
     }
+    break;
 
   //PAGEBREAK: 13
   default:
