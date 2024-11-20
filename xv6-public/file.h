@@ -1,5 +1,5 @@
-#include "sleeplock.h"
-#include "fs.h"
+extern struct sleeplock;
+#define NDIRECT 12
 
 struct file {
   enum { FD_NONE, FD_PIPE, FD_INODE } type;
