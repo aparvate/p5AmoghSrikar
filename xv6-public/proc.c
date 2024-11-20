@@ -7,6 +7,7 @@
 #include "proc.h"
 #include "spinlock.h"
 #include "wmap.h"
+#include "file.h"
 
 #ifndef NULL
 #define NULL ((void *)0)
