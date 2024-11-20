@@ -568,6 +568,19 @@ wmapHelper(uint addr, int length, int flags, int fd) {
     }
   }
 
+    // iterating through every map in our array, and checking to see if there's any overlap
+  for (int i = 0; i < 16; i++) {
+    struct map_wmap* mapOverlap = &curr_p -> maps[i];
+
+    if (mapOverlap -> length != 0) {
+      int mapStart = mapOverlap->addr;
+      int mapEnd = mapOverlap->length;
+      if (!(addr + length <= mapStart || addr >= (mapStart + mapEnd))) {
+        return FAILED;
+      }
+    }
+  }
+
   // Check if region is already allocated or available
   for (uint a = addr; a < addr + length; a += PGSIZE) {
     pte_t *pte = walkpgdir(curr_p->pgdir, (char *)a, 0);
@@ -622,8 +635,6 @@ wmapHelper(uint addr, int length, int flags, int fd) {
 
   return addr;
 }
-
-
 
 int wunmapHelper(uint addr) {
   struct proc *curr_p = myproc();
@@ -685,7 +696,6 @@ int wunmapHelper(uint addr) {
 
   return SUCCESS; // Success
 }
-
 
 int va2paHelper(uint va){
     struct proc *curproc = myproc(); // Get the current process
