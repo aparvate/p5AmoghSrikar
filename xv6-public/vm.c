@@ -204,7 +204,6 @@ loaduvm(pde_t *pgdir, char *addr, struct inode *ip, uint offset, uint sz, uint f
   if((uint) addr % PGSIZE != 0)
     panic("loaduvm: addr must be page aligned");
 
-  // 0x002 = Writeable in mmu.h
   if (flags & PTE_P) {
     permissions = permissions | PTE_P;
   }
@@ -222,7 +221,7 @@ loaduvm(pde_t *pgdir, char *addr, struct inode *ip, uint offset, uint sz, uint f
       n = PGSIZE;
     if(readi(ip, P2V(pa), offset+i, n) != n)
       return -1;
-    *pte = pa | permissions | PTE_P;
+    *pte = pa | permissions;
   }
   return 0;
 }
