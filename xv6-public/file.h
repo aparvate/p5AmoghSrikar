@@ -1,4 +1,4 @@
-extern struct sleeplock sleeplock;
+extern struct sleeplock lock;
 #define NDIRECT 12
 
 struct file {
