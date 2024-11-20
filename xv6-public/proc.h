@@ -68,6 +68,8 @@ struct proc {
 
 int wmapHelper(uint addr, int length, int flags, int fd);
 int wunmapHelper(uint addr);
+int va2paHelper(uint va);
+int getwmapinfoHelper(struct wmapinfo *wminfo);
 
 extern pte_t * walkpgdir(pde_t *pgdir, const void *va, int alloc);
 extern int mappages(pde_t *pgdir, void *va, uint size, uint pa, int perm);
