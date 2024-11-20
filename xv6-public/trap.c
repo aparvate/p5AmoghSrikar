@@ -81,7 +81,7 @@ trap(struct trapframe *tf)
     uint address_of_fault = rcr2();
     struct proc *p = myproc();
     struct map_wmap *map;
-    int page_fault_resolved = 0;
+    int segFaultFound = 0;
 
     // if page fault addr is part of a mapping: // lazy allocation
     // handle it
@@ -94,7 +94,7 @@ trap(struct trapframe *tf)
 
       // check if address of fault is within the bounds
       if(address_of_fault >= map -> addr && address_of_fault < (map -> addr + map -> length)) {
-        page_fault_resolved = 1;
+        segFaultFound = 1;
 
         // allocate the page now
         char *mem = kalloc();
@@ -112,11 +112,12 @@ trap(struct trapframe *tf)
 
     }
       
-    if(page_fault_resolved == 0) {
+    if(segFaultFound == 0) {
       cprintf("Segmentation Fault\n");
       // kill the process
       p->killed = 1;
     }
+    break;
 
   //PAGEBREAK: 13
   default:
