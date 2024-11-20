@@ -8,6 +8,10 @@
 #include "spinlock.h"
 #include "wmap.h"
 
+#ifndef NULL
+#define NULL ((void *)0)
+#endif
+
 struct {
   struct spinlock lock;
   struct proc proc[NPROC];
@@ -545,107 +549,140 @@ wmapHelper(uint addr, int length, int flags, int fd) {
   if (addr % PGSIZE != 0) {
     return FAILED;
   }
-  if (addr < KERNSTART || addr + length > KERNBASE){
+  if (addr < KERNSTART || addr + length > KERNBASE) {
     return FAILED;
   }
 
   struct proc* curr_p = myproc();
   struct file *file;
 
-  // checking the map_anonymous case
+  // Handle anonymous mapping case
   if (flags & MAP_ANONYMOUS) {
-    file = 0;
-  } 
-  else {
-    if (fd < 0 || fd >= NOFILE || (file = curr_p -> ofile[fd]) == 0) {
+    file = NULL;
+  } else {
+    if (fd < 0 || fd >= NOFILE || (file = curr_p->ofile[fd]) == NULL) {
       return FAILED;
     }
   }
 
-  // check if region is already allocated or avaialble
+  // Check if region is already allocated or available
   for (uint a = addr; a < addr + length; a += PGSIZE) {
-
-    // get the PTE for the curr VA
     pte_t *pte = walkpgdir(curr_p->pgdir, (char *)a, 0);
-
-    // if there is a PTE, then the address is already mapped so return failed
     if (pte && (*pte & PTE_P)) {
       return FAILED;
     }
   }
 
-  struct map_wmap *map = 0;
+  struct map_wmap *map = NULL;
 
-    // find the first empty space in the wmaps array (all of the maps), and make map point to it
+  // Find the first empty slot in the mappings array
+  for (int i = 0; i < 16; i++) {
+    if (curr_p->maps[i].length == 0) {
+      map = &curr_p->maps[i];
+      break;
+    }
+  }
+
+  if (map == NULL) {
+    return FAILED;
+  }
+
+  // Dynamically calculate the next available address if not MAP_FIXED
+  if (!(flags & MAP_FIXED)) {
+    addr = KERNSTART;
     for (int i = 0; i < 16; i++) {
-      if (curr_p->maps[i].length == 0) {
-        map = &curr_p->maps[i];
-        break;
+      struct map_wmap *existing = &curr_p->maps[i];
+      if (existing->length > 0) {
+        uint end = existing->addr + existing->length;
+        if (addr < end) {
+          addr = end; // Move addr past the end of this mapping
+        }
       }
     }
-
-    // if there was no more empty space
-    if (!map) {
-        return FAILED;
+    if (addr + length > KERNBASE) {
+      return FAILED; // Out of address space
     }
+  }
 
-    // fill in that empty space with the details of our wmap call
-    map->addr = addr;
-    map->length = length;
-    map->flags = flags;
-    map->file = file;
-    map->fd = fd;
+  // Fill in the mapping details
+  map->addr = addr;
+  map->length = length;
+  map->flags = flags;
+  map->file = file;
+  map->fd = fd;
 
+  // Mark the pages for lazy allocation
   for (uint a = addr; a < addr + length; a += PGSIZE) {
-
-    // this time we create the PTE and set it to 0 so we know it's not present so a page fault will occur
     pte_t *pte = walkpgdir(curr_p->pgdir, (char *)a, 1);
-    *pte = 0;
+    *pte = 0; // Mark the page as not present
   }
 
   return addr;
 }
 
-int wunmapHelper(uint addr) {
-  struct proc* curr_p = myproc();
-  struct map_wmap *map = 0;
 
+
+int wunmapHelper(uint addr) {
+  struct proc *curr_p = myproc();
+  struct map_wmap *map = NULL;
+
+  // Validate address alignment
   if (addr % PGSIZE != 0) {
     return FAILED;
   }
-  if (addr < KERNSTART || addr > KERNBASE){
-    return FAILED;
-  }
-  for (int i = 0; i < 16; i ++){
-    if (curr_p->maps[i].addr == addr){
+
+  // Find the mapping corresponding to the given address
+  for (int i = 0; i < 16; i++) {
+    if (curr_p->maps[i].addr == addr) {
       map = &curr_p->maps[i];
+      break;
     }
   }
 
-  // Write back data for file-backed mappings with MAP_SHARED
+  // If no matching mapping is found, return failure
+  if (map == NULL) {
+    return FAILED;
+  }
+
+  // Handle file-backed mappings with MAP_SHARED
   if (map->file && (map->flags & MAP_SHARED)) {
     uint offset = 0;
     for (uint a = map->addr; a < map->addr + map->length; a += PGSIZE, offset += PGSIZE) {
       pte_t *pte = walkpgdir(curr_p->pgdir, (char *)a, 0);
       if (pte && (*pte & PTE_P)) {
         char *data = (char *)P2V(PTE_ADDR(*pte));
-        filewrite(map->file, data, offset);
+        begin_op();
+        ilock(map->file->ip);
+        writei(map->file->ip, data, offset, PGSIZE);
+        iunlock(map->file->ip);
+        end_op();
       }
     }
   }
 
-  // Clear the metadata for the mapping
+  // Free allocated pages
+  for (uint a = map->addr; a < map->addr + map->length; a += PGSIZE) {
+    pte_t *pte = walkpgdir(curr_p->pgdir, (char *)a, 0);
+    if (pte && (*pte & PTE_P)) {
+      uint pa = PTE_ADDR(*pte);
+      kfree(P2V(pa)); // Free the physical memory
+      *pte = 0;       // Clear the PTE
+    }
+  }
+
+  // Clear the mapping metadata
   map->addr = 0;
   map->length = 0;
   map->flags = 0;
-  map->file = 0;
+  map->file = NULL;
   map->fd = -1;
 
-  // Flush the TLB
+  // Flush the TLB to ensure no stale entries
   lcr3(V2P(curr_p->pgdir));
 
-  return 0;  // Success
+  return SUCCESS; // Success
 }
+
 
 int va2paHelper(uint va){
     struct proc *curproc = myproc(); // Get the current process
@@ -668,8 +705,7 @@ int va2paHelper(uint va){
     return pa | offset; // Combine the physical page address with the offset
 }
 
-int
-getwmapinfoHelper(struct wmapinfo *wminfo) {
+int getwmapinfoHelper(struct wmapinfo *wminfo) {
     struct proc *curproc = myproc(); // Get the current process
     if (!curproc) {
         return FAILED; // No valid process context
@@ -714,6 +750,9 @@ getwmapinfoHelper(struct wmapinfo *wminfo) {
 
             if (pte && (*pte & PTE_P)) {
                 loaded_pages++;
+            } else if (pte && !(*pte & PTE_P)) {
+                // Optional: Handle cases where pages are allocated but not present
+                continue;
             }
         }
         wminfo->n_loaded_pages[mmap_count] = loaded_pages;
@@ -726,4 +765,5 @@ getwmapinfoHelper(struct wmapinfo *wminfo) {
 
     return SUCCESS; // Successfully populated the wmapinfo struct
 }
+
 
