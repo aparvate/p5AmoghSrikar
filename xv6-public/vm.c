@@ -205,10 +205,13 @@ loaduvm(pde_t *pgdir, char *addr, struct inode *ip, uint offset, uint sz, uint f
     panic("loaduvm: addr must be page aligned");
 
   // 0x002 = Writeable in mmu.h
-  if (flags & PTE_W) {
-    permissions = PTE_U | PTE_W;
+  if (flags & PTE_P) {
+    permissions = permissions | PTE_P;
   }
-  
+  if (flags & PTE_W) {
+    permissions = permissions | PTE_W;
+  }
+
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walkpgdir(pgdir, addr+i, 0)) == 0)
       panic("loaduvm: address should exist");
