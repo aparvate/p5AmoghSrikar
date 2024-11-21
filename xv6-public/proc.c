@@ -1,14 +1,14 @@
 #include "types.h"
 #include "defs.h"
 #include "param.h"
-#include "spinlock.h"
-#include "sleeplock.h"
-#include "fs.h"
-#include "file.h"
 #include "memlayout.h"
 #include "mmu.h"
 #include "x86.h"
 #include "proc.h"
+#include "spinlock.h"
+#include "sleeplock.h"
+#include "fs.h"
+#include "file.h"
 
 struct {
   struct spinlock lock;
@@ -41,35 +41,34 @@ fdalloc(struct file *f)
 // wmap system call maps a virtual address to a physical address
 uint
 wmap(uint addr, int length, int flags, int fd) {;
-  // Validate flags: MAP_FIXED and MAP_SHARED must be set
-  // MAP_PRIVATE is not supported in this implementation
-  // Only MAP_FIXED is supported, so the address must be valid
-  if(!(flags & MAP_FIXED) || !(flags & MAP_SHARED)) {
-      return FAILED;
+  if (!(flags & MAP_FIXED) || !(flags & MAP_SHARED)) {
+    return FAILED;
+  }
+  if (length <= 0) {
+    return FAILED;
+  }
+  if (addr % PGSIZE != 0) {
+    return FAILED;
+  }
+  if (addr < KERNSTART || addr + length > KERNBASE) {
+    return FAILED;
   }
 
-  // Validate address alignment and range
-  if (!(((addr) % PGSIZE == 0) && ((addr) >= KERNSTART) && ((addr) < KERNBASE)))
-    return FAILED;
-
-  // Validate length
-  if(length <= 0)
-      return FAILED;
-
   struct proc *curproc = myproc();
+  struct file *file;
 
   // Check maximum number of mmaps
   if(curproc->wmapinfo.total_mmaps >= MAX_WMMAP_INFO)
       return FAILED;
 
   // Check for overlapping mappings
-  for(int i = 0; i < curproc->wmapinfo.total_mmaps; i++) {
-      uint existing_addr = curproc->wmapinfo.addr[i];
-      int existing_length = curproc->wmapinfo.length[i];
-      // NOTE: To check the proc's addr space means to check the range of the virtual address
-      if(addr < existing_addr + existing_length && (addr + length) > existing_addr) {
-          // Overlapping mappings found!
+  for (int i = 0; i < 16; i++) {
+      if (curproc->wmapinfo.length != 0) {
+        int mapStart = curproc->wmapinfo.addr[i];
+        int mapEnd = curproc->wmapinfo.addr[i];
+        if (!(addr + length <= mapStart || addr >= (mapStart + mapEnd))) {
           return FAILED;
+        }
       }
   }
 
@@ -92,8 +91,8 @@ wmap(uint addr, int length, int flags, int fd) {;
     if(flags & MAP_ANONYMOUS){
       curproc->wmapinfo.fd[curproc->wmapinfo.total_mmaps] = -1;
     }else{
-      struct file *f = curproc->ofile[fd];
-      struct file *newFile = filedup(f);
+      file = curproc->ofile[fd];
+      struct file *newFile = filedup(file);
       int newFd = fdalloc(newFile);
       curproc->wmapinfo.fd[curproc->wmapinfo.total_mmaps] = newFd;
     }
