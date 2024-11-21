@@ -158,20 +158,28 @@ trap(struct trapframe *tf)
       pte_t *pte;
       pte = walkpgdir(p->pgdir, (void *)PGROUNDDOWN(address_of_fault), 0);
       uint flags = PTE_FLAGS(*pte);
+      cprintf("Check if user, present (always there) and then cow\n");
       if((flags & PTE_U) && (flags & PTE_P) && (flags & PTE_COW)){
+        cprintf("Try allocation\n");
         char *mem = kalloc();
         if(mem == 0) {
           p->killed = 1;
           break;
         }
+        cprintf("Alloc succeeded\n");
         uint pa = PTE_ADDR((*pte));
+        cprintf("Write to address\n");
         memmove(mem, (char *)P2V(pa), PGSIZE);
         *pte = 0;
+        cprintf("Check if paged\n");
         if(mappages(p->pgdir, (char*)PGROUNDDOWN(address_of_fault), PGSIZE, V2P(mem), PTE_W|PTE_U) >= 0) {
           acquire(&CopyWriteLock);
+          cprintf("Lock in trap handler past 16 acquired\n");
           references[pa / PGSIZE] --;
           references[V2P(mem) / PGSIZE] = 1;
           release(&CopyWriteLock);
+          cprintf("Lock in trap handler past 16 released\n");
+          segFaultFound = 1;
 
         } else{
           kfree(mem);
@@ -179,6 +187,7 @@ trap(struct trapframe *tf)
         }
       }
       else{
+        cprintf("This means that it either wasn't present, useable, or COW\n");
         cprintf("Segmentation Fault\n");
         cprintf("Within the Else Statement\n");
         p->killed = 1;
