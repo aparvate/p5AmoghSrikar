@@ -198,102 +198,86 @@ growproc(int n)
 int
 fork(void)
 {
-  int i, pid;
-  struct proc *np;
-  struct proc *curproc = myproc();
-  cprintf("procs set\n");
+ int i, pid;
+ struct proc *np;
+ struct proc *curproc = myproc();
 
-  // Allocate process.
-  if ((np = allocproc()) == 0) {
-    return -1;
-  }
-  cprintf("process allocated\n");
 
-  // Copy process state from parent process.
-  if ((np->pgdir = copyuvm(curproc->pgdir, curproc->sz)) == 0) {
-    kfree(np->kstack);
-    np->kstack = 0;
-    np->state = UNUSED;
-    return -1;
-  }
-  cprintf("process state copied\n");
+ if((np = allocproc()) == 0){
+   return -1;
+ }
 
-  np->sz = curproc->sz;
-  np->parent = curproc;
-  *np->tf = *curproc->tf;
-  cprintf("set pointers to current process\n");
 
-  // Clear %eax so that fork returns 0 in the child.
-  np->tf->eax = 0;
+ if((np->pgdir = copyuvm(curproc->pgdir, curproc->sz)) == 0){
+   kfree(np->kstack);
+   np->kstack = 0;
+   np->state = UNUSED;
+   return -1;
+ }
+ np->sz = curproc->sz;
+ np->parent = curproc;
+ *np->tf = *curproc->tf;
 
-  // Duplicate open file descriptors.
-  for (i = 0; i < NOFILE; i++) {
-    if (curproc->ofile[i]) {
-      np->ofile[i] = filedup(curproc->ofile[i]);
-    }
-  }
-  np->cwd = idup(curproc->cwd);
-  cprintf("FDs duplicated\n");
 
-  safestrcpy(np->name, curproc->name, sizeof(curproc->name));
+ for(i = 0; i < 16; i++) {
+   if(curproc->maps[i].flags | PTE_P) {
+     np->maps[i].length = curproc->maps[i].length;
+     np->maps[i].fd = curproc->maps[i].fd;     
+     np->maps[i].file = curproc->maps[i].file;
+     np->maps[i].flags = curproc->maps[i].flags;
+     np->maps[i].addr = curproc->maps[i].addr;
+     if(np->maps[i].fd != -1){
+       struct file *f = curproc->ofile[np->maps[i].fd];
+       filedup(f);
+     }
+     if (curproc->maps[i].flags | PTE_P) {
+       for (uint va = curproc->maps[i].addr; va < curproc->maps[i].addr + PGROUNDUP(curproc->maps[i].length); va += PGSIZE) {
+         pte_t *pte = walkpgdir(curproc->pgdir, (void *)va, 0);
+         if (pte && (*pte & PTE_P)) {
+          if (!(curproc->maps[i].flags & MAP_SHARED)) {
+             char *mem = kalloc();
+             if (mem == 0) {
+               panic("fork: kalloc failed");
+             }
+             memmove(mem, (char *)P2V(PTE_ADDR(*pte)), PGSIZE);
+             if (mappages(np->pgdir, (void *)va, PGSIZE, V2P(mem), PTE_FLAGS(*pte)) < 0) {
+               kfree(mem);
+               panic("fork: mappages failed");
+             }
+             acquire(&CopyWriteLock);
+             references[V2P(mem) / PGSIZE]++;
+             release(&CopyWriteLock);
+            
+           }
+           else {
+             acquire(&CopyWriteLock);
+             references[PTE_ADDR(*pte) / PGSIZE]++;
+             release(&CopyWriteLock);
+             if (mappages(np->pgdir, (void *)va, PGSIZE, PTE_ADDR(*pte), PTE_FLAGS(*pte)) < 0) {
+               panic("fork: mappages failed");
+             }
+           }
+         }
+       }
+     }
+   }
+ }
 
-  // Copy `maps` for memory-mapped regions.
-  for (i = 0; i < 16; i++) {
-    cprintf("index: %d\n", i);
-    struct map_wmap *m = &curproc->maps[i];
 
-    // Skip invalid or unused mappings.
-    if (m->addr == 0 || m->length == 0) {
-      continue;
-    }
-    cprintf("invalid/unused mappings skipped\n");
+ // Clear %eax so that fork returns 0 in the child.
+ np->tf->eax = 0;
 
-    // Handle shared mappings (MAP_SHARED).
-    if (m->flags & MAP_SHARED) {
-      for (uint offset = 0; offset < m->length; offset += PGSIZE) {
-        cprintf("offset: %p\n", (void *)offset);
-        void *va = (void *)(m->addr + offset);
-        pte_t *parentPTE = walkpgdir(curproc->pgdir, va, 0);
-
-        // Map the shared physical page into the child's page table.
-        cprintf("Check if parent page table entry to 0\n");
-        if (parentPTE && (*parentPTE & PTE_P)) {
-          uint pa = PTE_ADDR(*parentPTE); // Physical address of the page.
-
-          cprintf("Check if mappages fails\n");
-          if (mappages(np->pgdir, va, PGSIZE, pa, PTE_U | PTE_W) < 0) {
-            freevm(np->pgdir);
-            kfree(np->kstack);
-            np->state = UNUSED;
-            return -1;
-          }
-          cprintf("Mappages succeeded\n");
-        }
-      }
-
-      // Add the mapping to the child's `maps` array.
-      for (int j = 0; j < 16; j++) {
-        cprintf("child maps array index: %d\n", j);
-        if (np->maps[j].length == 0) { // Find an empty slot.
-          np->maps[j] = *m;           // Copy the mapping.
-          break;
-        }
-      }
-    }
-  }
-
-  pid = np->pid;
-  cprintf("PID set!\n");
-
-  acquire(&ptable.lock);
-  cprintf("Lock acquired\n");
-  np->state = RUNNABLE;
-  release(&ptable.lock);
-  cprintf("Lock released\n");
-
-  cprintf("Index i: %d\n", i);
-  cprintf("Return pid: %d\n", pid);
-  return pid;
+ for(i = 0; i < NOFILE; i++)
+   if(curproc->ofile[i])
+     np->ofile[i] = filedup(curproc->ofile[i]);
+     
+ np->cwd = idup(curproc->cwd);
+ safestrcpy(np->name, curproc->name, sizeof(curproc->name));
+ pid = np->pid;
+ acquire(&ptable.lock);
+ np->state = RUNNABLE;
+ release(&ptable.lock);
+ return pid;
 }
 
 
