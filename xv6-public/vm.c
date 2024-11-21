@@ -363,12 +363,8 @@ copyuvm(pde_t *pgdir, uint sz)
     if((mem = kalloc()) == 0)
       goto bad;
 
-    if(!(flags & PTE_P)){
-      flags |= PTE_P;
-    }
-    if(!(flags & PTE_U)){
-      flags |= PTE_U;
-    }
+    flags |= PTE_P;
+    flags |= PTE_U;
     if(flags & PTE_W){
       flags |= PTE_COW;
       flags &= ~PTE_W;
