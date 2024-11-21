@@ -10,6 +10,9 @@
 extern char data[];  // defined by kernel.ld
 pde_t *kpgdir;  // for use in scheduler()
 
+struct spinlock CopyWriteLock;
+uchar references[PHYSTOP/PGSIZE];
+
 // Set up CPU's kernel segment descriptors.
 // Run once on entry on each CPU.
 void
@@ -222,6 +225,8 @@ loaduvm(pde_t *pgdir, char *addr, struct inode *ip, uint offset, uint sz, uint f
     if(readi(ip, P2V(pa), offset+i, n) != n)
       return -1;
     *pte = pa | permissions | PTE_P;
+    if(flags & ELF_PROG_FLAG_WRITE) //possibly redundant?
+      *pte |= PTE_W;
   }
   return 0;
 }
@@ -254,6 +259,13 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
       kfree(mem);
       return 0;
     }
+    acquire(&CopyWriteLock);
+    uint mem_index = V2P(mem)/PGSIZE;
+    if (references[mem_index] != 0){
+      references[mem_index] = references[mem_index] + 1;
+    }
+    references[mem_index] = 1;
+    release(&CopyWriteLock);
   }
   return newsz;
 }
@@ -281,7 +293,13 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
       if(pa == 0)
         panic("kfree");
       char *v = P2V(pa);
-      kfree(v);
+      acquire(&CopyWriteLock);
+      uint pte_addr = PTE_ADDR(*pte);
+      references[pte_addr/ PGSIZE] = references[pte_addr/ PGSIZE] - 1;
+      if(references[pte_addr / PGSIZE] == 0){
+        kfree(v);
+      }
+     release(&CopyWriteLock);
       *pte = 0;
     }
   }
@@ -341,12 +359,23 @@ copyuvm(pde_t *pgdir, uint sz)
     flags = PTE_FLAGS(*pte);
     if((mem = kalloc()) == 0)
       goto bad;
-    memmove(mem, (char*)P2V(pa), PGSIZE);
+
+    if(flags & PTE_W){
+      flags &= ~PTE_W;
+      flags |= PTE_COW;
+    }
+    if(mappages(pgdir, (void*)i, PGSIZE, pa, flags) < 0) {
+      goto bad;
+    }
     if(mappages(d, (void*)i, PGSIZE, V2P(mem), flags) < 0) {
       kfree(mem);
       goto bad;
     }
+    acquire(&CopyWriteLock);
+    references[pa/PGSIZE] = references[pa/PGSIZE] + 1;
+    release(&CopyWriteLock);
   }
+  lcr3(V2P(pgdir));
   return d;
 
 bad:
