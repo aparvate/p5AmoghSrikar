@@ -137,6 +137,9 @@ trap(struct trapframe *tf)
             }
           break; // Exit loop once the page fault is handled
         }
+        else{
+          cprintf("Gotcha!\n");
+        }
     }
 
       
