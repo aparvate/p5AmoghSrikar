@@ -66,12 +66,15 @@ mappages(pde_t *pgdir, void *va, uint size, uint pa, int perm)
 {
   char *a, *last;
   pte_t *pte;
+  cprintf("pte: %d\n", pte);
 
   a = (char*)PGROUNDDOWN((uint)va);
   last = (char*)PGROUNDDOWN(((uint)va) + size - 1);
+  cprintf("Before loop\n", pte);
   for(;;){
     if((pte = walkpgdir(pgdir, a, 1)) == 0)
       return -1;
+    cprintf("pass walkpgdir\n");
     if(*pte & PTE_P)
       panic("remap");
     *pte = pa | perm | PTE_P;
