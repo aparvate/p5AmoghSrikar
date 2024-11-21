@@ -289,7 +289,7 @@ fork(void)
   release(&ptable.lock);
   cprintf("Lock released\n");
 
-  cprintf("Index i: %d", i);
+  cprintf("Index i: %d\n", i);
   cprintf("Return pid: %d\n", pid);
   return pid;
 }
