@@ -286,45 +286,17 @@ exit(void)
 {
   struct proc *curproc = myproc();
   struct proc *p;
-  struct map_wmap *map = NULL;
   int fd;
 
-  if(curproc == initproc)
+  if (curproc == initproc)
     panic("init exiting");
 
   // Close all open files.
-  for(fd = 0; fd < NOFILE; fd++){
-    if(curproc->ofile[fd]){
+  for (fd = 0; fd < NOFILE; fd++) {
+    if (curproc->ofile[fd]) {
       fileclose(curproc->ofile[fd]);
       curproc->ofile[fd] = 0;
     }
-  }
-
-  for (int i = 0; i < 16; i++) {
-    map = &curproc->maps[i];
-    // If no matching mapping is found, return failure
-    if (map == NULL) {
-      return;
-    }
-    // Free allocated pages
-    for (uint a = map->addr; a < map->addr + map->length; a += PGSIZE) {
-      pte_t *pte = walkpgdir(curproc->pgdir, (char *)a, 0);
-      if (pte && (*pte & PTE_P)) {
-        uint pa = PTE_ADDR(*pte);
-        kfree(P2V(pa)); // Free the physical memory
-        *pte = 0;       // Clear the PTE
-      }
-    }
-
-    // Clear the mapping metadata
-    map->addr = 0;
-    map->length = 0;
-    map->flags = 0;
-    map->file = NULL;
-    map->fd = -1;
-
-    // Flush the TLB to ensure no stale entries
-    lcr3(V2P(curproc->pgdir));
   }
 
   begin_op();
@@ -332,16 +304,44 @@ exit(void)
   end_op();
   curproc->cwd = 0;
 
+  // Invalidate all memory mappings in the process's `wmaps` array
+  for (int i = 0; i < 16; i++) {
+    struct map_wmap *map = &curproc->maps[i];
+
+    // Skip unused or invalid mappings
+    if (map->addr == 0 || map->length == 0) {
+      continue;
+    }
+
+    uint startAddr = map->addr;
+    uint endAddr = startAddr + map->length;
+
+    // Invalidate PTEs for the mapping's address range
+    for (uint addr = startAddr; addr < endAddr; addr += PGSIZE) {
+      pte_t *pte = walkpgdir(curproc->pgdir, (void *)addr, 0);
+      if (pte && (*pte & PTE_P)) {
+        *pte = *pte & ~PTE_P;  // Clear the PTE to invalidate the mapping
+      }
+    }
+
+    // Reset the mapping in `wmaps`
+    map->addr = 0;
+    map->length = 0;
+    map->flags = 0;
+    map->file = 0;
+    map->fd = 0;
+  }
+
   acquire(&ptable.lock);
 
   // Parent might be sleeping in wait().
   wakeup1(curproc->parent);
 
   // Pass abandoned children to init.
-  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-    if(p->parent == curproc){
+  for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
+    if (p->parent == curproc) {
       p->parent = initproc;
-      if(p->state == ZOMBIE)
+      if (p->state == ZOMBIE)
         wakeup1(initproc);
     }
   }
