@@ -90,7 +90,6 @@ trap(struct trapframe *tf)
     struct proc *p = myproc();
     struct map_wmap *map;
     int segFaultFound = 0;
-    int indexOfFault = -1;
 
     // if page fault addr is part of a mapping: // lazy allocation
     // handle it
