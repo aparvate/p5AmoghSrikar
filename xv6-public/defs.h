@@ -9,6 +9,7 @@ struct spinlock;
 struct sleeplock;
 struct stat;
 struct superblock;
+struct wmapinfo;
 
 // bio.c
 void            binit(void);
@@ -64,6 +65,10 @@ extern uchar    ioapicid;
 void            ioapicinit(void);
 
 // kalloc.c
+void            inc_ref(uint);
+void            dec_ref(uint);
+int             get_ref(uint);
+void            set_ref(uint);
 char*           kalloc(void);
 void            kfree(char*);
 void            kinit1(void*, void*);
@@ -120,6 +125,10 @@ void            userinit(void);
 int             wait(void);
 void            wakeup(void*);
 void            yield(void);
+uint            wmap(uint, int, int, int);
+int             wunmap(uint);
+uint            va2pa(uint);
+int             getwmapinfo(struct wmapinfo*);
 
 // swtch.S
 void            swtch(struct context**, struct context*);
@@ -185,6 +194,9 @@ void            switchuvm(struct proc*);
 void            switchkvm(void);
 int             copyout(pde_t*, uint, void*, uint);
 void            clearpteu(pde_t *pgdir, char *uva);
+int             mappages(pde_t *pgdir, void *va, uint size, uint pa, int perm);
+pte_t *         walkpgdir(pde_t *pgdir, const void *va, int alloc);
 
 // number of elements in fixed-size array
 #define NELEM(x) (sizeof(x)/sizeof((x)[0]))
+

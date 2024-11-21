@@ -1,3 +1,5 @@
+#include "wmap.h"
+
 // Per-CPU state
 struct cpu {
   uchar apicid;                // Local APIC ID
@@ -34,14 +36,6 @@ struct context {
 
 enum procstate { UNUSED, EMBRYO, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
-struct map_wmap {
-  uint addr;
-  uint length;
-  int flags;
-  struct file *file;
-  int fd;
-};
-
 // Per-process state
 struct proc {
   uint sz;                     // Size of process memory (bytes)
@@ -57,7 +51,8 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
-  struct map_wmap maps[16];    // All wmaps stored in here
+  struct wmapinfo wmapinfo;    // WMAP info
+  struct wmap_file_info wmap_file_info; // WMAP file info
 };
 
 // Process memory is laid out contiguously, low addresses first:
@@ -65,12 +60,3 @@ struct proc {
 //   original data and bss
 //   fixed-size stack
 //   expandable heap
-
-int wmapHelper(uint addr, int length, int flags, int fd);
-int wunmapHelper(uint addr);
-int va2paHelper(uint va);
-struct wmapinfo;
-int getwmapinfoHelper(struct wmapinfo *wminfo);
-
-extern pte_t * walkpgdir(pde_t *pgdir, const void *va, int alloc);
-extern int mappages(pde_t *pgdir, void *va, uint size, uint pa, int perm);

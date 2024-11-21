@@ -6,13 +6,9 @@
 #include "mmu.h"
 #include "proc.h"
 #include "elf.h"
-#include "spinlock.h"
 
 extern char data[];  // defined by kernel.ld
 pde_t *kpgdir;  // for use in scheduler()
-
-struct spinlock CopyWriteLock;
-uchar references[PHYSTOP/PGSIZE];
 
 // Set up CPU's kernel segment descriptors.
 // Run once on entry on each CPU.
@@ -203,18 +199,10 @@ loaduvm(pde_t *pgdir, char *addr, struct inode *ip, uint offset, uint sz, uint f
 {
   uint i, pa, n;
   pte_t *pte;
-  int permissions = PTE_U;
+  uint perm;
 
   if((uint) addr % PGSIZE != 0)
     panic("loaduvm: addr must be page aligned");
-
-  if (flags & PTE_P) {
-    permissions = permissions | PTE_P;
-  }
-  if (flags & PTE_W) {
-    permissions = permissions | PTE_W;
-  }
-
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walkpgdir(pgdir, addr+i, 0)) == 0)
       panic("loaduvm: address should exist");
@@ -225,9 +213,14 @@ loaduvm(pde_t *pgdir, char *addr, struct inode *ip, uint offset, uint sz, uint f
       n = PGSIZE;
     if(readi(ip, P2V(pa), offset+i, n) != n)
       return -1;
-    *pte = pa | permissions | PTE_P;
-    if(flags & ELF_PROG_FLAG_WRITE) //possibly redundant?
-      *pte |= PTE_W;
+  
+    // Set up permissions based on ELF flags
+    perm = PTE_P | PTE_U;  // Pages are present and user-accessible
+    if(flags & ELF_PROG_FLAG_WRITE)
+      perm |= PTE_W;       // Add write permission if segment is writable
+      
+    // Update the PTE with the correct permissions while preserving the physical address
+    *pte = PTE_ADDR(*pte) | perm;
   }
   return 0;
 }
@@ -248,6 +241,7 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
   a = PGROUNDUP(oldsz);
   for(; a < newsz; a += PGSIZE){
     mem = kalloc();
+    set_ref(V2P(mem));
     if(mem == 0){
       cprintf("allocuvm out of memory\n");
       deallocuvm(pgdir, newsz, oldsz);
@@ -260,15 +254,6 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
       kfree(mem);
       return 0;
     }
-    acquire(&CopyWriteLock);
-    uint mem_index = V2P(mem)/PGSIZE;
-    if (references[mem_index] != 0){
-      references[mem_index] = references[mem_index] + 1;
-    }
-    else{
-      references[mem_index] = 1;
-    }
-    release(&CopyWriteLock);
   }
   return newsz;
 }
@@ -296,14 +281,11 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
       if(pa == 0)
         panic("kfree");
       char *v = P2V(pa);
-      acquire(&CopyWriteLock);
-      uint pte_addr = PTE_ADDR(*pte);
-      references[pte_addr/ PGSIZE] = references[pte_addr/ PGSIZE] - 1;
-      if(references[pte_addr / PGSIZE] == 0){
+      dec_ref(pa);
+      if (get_ref(pa) == 0) {
         kfree(v);
+        *pte = 0;
       }
-     release(&CopyWriteLock);
-      *pte = 0;
     }
   }
   return newsz;
@@ -343,52 +325,83 @@ clearpteu(pde_t *pgdir, char *uva)
 
 // Given a parent process's page table, create a copy
 // of it for a child.
+// pde_t*
+// copyuvm(pde_t *pgdir, uint sz)
+// {
+//   pde_t *d;
+//   pte_t *pte;
+//   uint pa, i, flags;
+//   char *mem;
+
+//   if((d = setupkvm()) == 0)
+//     return 0;
+//   for(i = 0; i < sz; i += PGSIZE){
+//     if((pte = walkpgdir(pgdir, (void *) i, 0)) == 0)
+//       panic("copyuvm: pte should exist");
+//     if(!(*pte & PTE_P))
+//       panic("copyuvm: page not present");
+//     pa = PTE_ADDR(*pte);
+//     flags = PTE_FLAGS(*pte);
+//     if((mem = kalloc()) == 0)
+//       goto bad;
+//     memmove(mem, (char*)P2V(pa), PGSIZE);
+//     if(mappages(d, (void*)i, PGSIZE, V2P(mem), flags) < 0) {
+//       kfree(mem);
+//       goto bad;
+//     }
+//   }
+//   return d;
+
+// bad:
+//   freevm(d);
+//   return 0;
+// }
+
 pde_t*
 copyuvm(pde_t *pgdir, uint sz)
 {
- pde_t *d;
- pte_t *pte;
- uint pa, i, flags;
- //char *mem;
+  pde_t *d;
+  pte_t *pte;
+  uint pa, i, flags;
+  //char *mem;
 
+  if((d = setupkvm()) == 0)
+    return 0;
+  for(i = 0; i < sz; i += PGSIZE){
+    if((pte = walkpgdir(pgdir, (void *) i, 0)) == 0)
+      panic("copyuvm: pte should exist");
+    if(!(*pte & PTE_P))
+      panic("copyuvm: page not present");
+    pa = PTE_ADDR(*pte);
+    flags = PTE_FLAGS(*pte);
 
- if((d = setupkvm()) == 0)
-   return 0;
- for(i = 0; i < sz; i += PGSIZE){
-   if((pte = walkpgdir(pgdir, (void *) i, 0)) == 0)
-     panic("copyuvm: pte should exist");
-   if(!(*pte & PTE_P))
-     panic("copyuvm: page not present");
-   pa = PTE_ADDR(*pte);
-   flags = PTE_FLAGS(*pte);
+    // Check if the page is writable
+    // Check if the page is writable
+    if(flags & PTE_W) {
+      flags |= PTE_COW;   // Mark the child’s page as COW
+      flags &= ~PTE_W;    // Remove write permission in the child
+    }
 
-  if (!(flags & PTE_P)){
-    flags |= PTE_P;
+    *pte = pa | flags;
+    lcr3(V2P(myproc()->pgdir));
+    
+    inc_ref(pa);
+
+    // if((mem = kalloc()) == 0)
+    //   goto bad;
+    // memmove(mem, (char*)P2V(pa), PGSIZE);
+    if(mappages(d, (void*)i, PGSIZE, pa, flags) < 0) {
+      //kfree(mem);
+      goto bad;
+    }
   }
-  if (!(flags & PTE_U)){
-    flags |= PTE_U;
-  }
-   if((flags & PTE_U) && (flags & PTE_W)){
-     flags |= PTE_COW;
-     flags &= ~PTE_W;
-   }
-   *pte = 0;
-   if(mappages(pgdir, (void*)i, PGSIZE, pa, flags) < 0) {
-     goto bad;
-   }
-   if(mappages(d, (void*)i, PGSIZE, pa, flags) < 0) {
-     goto bad;
-   }
-   acquire(&CopyWriteLock);
-   references[pa / PGSIZE]++;
-   release(&CopyWriteLock);
- }
- lcr3(V2P(pgdir));
- return d;
+  //switchkvm();
+  // lcr3(V2P(d));
+  return d;
+
 bad:
- //cprintf("debug: 11");
- freevm(d);
- return 0;
+  freevm(d);
+  return 0;
 }
 
 //PAGEBREAK!

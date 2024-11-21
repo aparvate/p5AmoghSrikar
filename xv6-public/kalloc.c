@@ -9,6 +9,10 @@
 #include "mmu.h"
 #include "spinlock.h"
 
+#define MAX_PHYS_PAGES (PHYSTOP / PGSIZE) // Adjust as per the system's max physical pages.
+
+static int refcount[MAX_PHYS_PAGES]; // 1 byte per page for up to 256 references.
+
 void freerange(void *vstart, void *vend);
 extern char end[]; // first address after kernel loaded from ELF file
                    // defined by the kernel linker script in kernel.ld
@@ -23,6 +27,36 @@ struct {
   struct run *freelist;
 } kmem;
 
+//increment and decrement reference counts
+
+
+void inc_ref(uint pa) {
+  acquire(&kmem.lock);
+  refcount[pa / PGSIZE]++;
+  release(&kmem.lock);
+}
+
+void dec_ref(uint pa) {
+  acquire(&kmem.lock);
+  refcount[pa/PGSIZE]--;
+  release(&kmem.lock);
+}
+
+int get_ref(uint pa) {
+  int count;
+  acquire(&kmem.lock);
+  // Example of how you might use it:
+  count = refcount[pa/PGSIZE];
+  release(&kmem.lock);
+  return count;
+}
+
+void set_ref(uint pa){
+  acquire(&kmem.lock);
+  refcount[pa/PGSIZE] = 1;
+  release(&kmem.lock);
+}
+
 // Initialization happens in two phases.
 // 1. main() calls kinit1() while still using entrypgdir to place just
 // the pages mapped by entrypgdir on free list.
@@ -33,6 +67,9 @@ kinit1(void *vstart, void *vend)
 {
   initlock(&kmem.lock, "kmem");
   kmem.use_lock = 0;
+  // for(int i = 0; i < PHYSTOP/PGSIZE; i++){
+  //   refcount[i] = 0;
+  // }
   freerange(vstart, vend);
 }
 
@@ -87,8 +124,10 @@ kalloc(void)
   if(kmem.use_lock)
     acquire(&kmem.lock);
   r = kmem.freelist;
-  if(r)
+  if(r){
     kmem.freelist = r->next;
+    //refcount[(uint)r / PGSIZE] = 1; // Initialize reference count.
+  }
   if(kmem.use_lock)
     release(&kmem.lock);
   return (char*)r;
