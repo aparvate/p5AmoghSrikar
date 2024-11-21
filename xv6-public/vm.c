@@ -367,10 +367,10 @@ copyuvm(pde_t *pgdir, uint sz)
     cprintf("Value of flags is: 0x%x\n", flags);
     flags |= PTE_P;
     flags |= PTE_U;
-    if(flags & PTE_W){
+    //if(flags & PTE_W){
       flags |= PTE_COW;
       flags &= ~PTE_W;
-    }
+    //}
     *pte = 0;
     if(mappages(pgdir, (void*)i, PGSIZE, pa, flags) < 0) {
       goto bad;
