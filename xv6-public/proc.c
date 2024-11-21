@@ -210,6 +210,7 @@ fork(void)
   cprintf("process allocated\n");
 
   // Copy process state from parent process.
+  cprintf("Value of pid before copy: %d\n", myproc()->pid);
   if ((np->pgdir = copyuvm(curproc->pgdir, curproc->sz)) == 0) {
     kfree(np->kstack);
     np->kstack = 0;
