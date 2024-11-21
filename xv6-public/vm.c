@@ -346,49 +346,45 @@ clearpteu(pde_t *pgdir, char *uva)
 pde_t*
 copyuvm(pde_t *pgdir, uint sz)
 {
-  pde_t *d;
-  pte_t *pte;
-  uint pa, i, flags;
-  char *mem;
+ pde_t *d;
+ pte_t *pte;
+ uint pa, i, flags;
+ //char *mem;
 
-  if((d = setupkvm()) == 0)
-    return 0;
-  for(i = 0; i < sz; i += PGSIZE){
-    if((pte = walkpgdir(pgdir, (void *) i, 0)) == 0)
-      panic("copyuvm: pte should exist");
-    if(!(*pte & PTE_P))
-      panic("copyuvm: page not present");
-    pa = PTE_ADDR(*pte);
-    flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto bad;
 
-    cprintf("Value of pid before copy: %d\n", myproc()->pid);
-    cprintf("Value of flags is: 0x%x\n", flags);
-    flags |= PTE_P;
-    flags |= PTE_U;
-    //if(flags & PTE_W){
-      flags |= PTE_COW;
-      flags &= ~PTE_W;
-    //}
-    *pte = 0;
-    if(mappages(pgdir, (void*)i, PGSIZE, pa, flags) < 0) {
-      goto bad;
-    }
-    if(mappages(d, (void*)i, PGSIZE, V2P(mem), flags) < 0) {
-      // kfree(mem);
-      goto bad;
-    }
-    acquire(&CopyWriteLock);
-    references[pa/PGSIZE] = references[pa/PGSIZE] + 1;
-    release(&CopyWriteLock);
-  }
-  lcr3(V2P(pgdir));
-  return d;
+ if((d = setupkvm()) == 0)
+   return 0;
+ for(i = 0; i < sz; i += PGSIZE){
+   if((pte = walkpgdir(pgdir, (void *) i, 0)) == 0)
+     panic("copyuvm: pte should exist");
+   if(!(*pte & PTE_P))
+     panic("copyuvm: page not present");
+   pa = PTE_ADDR(*pte);
+   flags = PTE_FLAGS(*pte);
 
+  //flags |= PTE_U;
+  //flags |= PTE_P;
+   if((flags & PTE_U) && (flags & PTE_W)){
+     flags |= PTE_COW;
+     flags &= ~PTE_W;
+   }
+   *pte = 0;
+   if(mappages(pgdir, (void*)i, PGSIZE, pa, flags) < 0) {
+     goto bad;
+   }
+   if(mappages(d, (void*)i, PGSIZE, pa, flags) < 0) {
+     goto bad;
+   }
+   acquire(&CopyWriteLock);
+   references[pa / PGSIZE]++;
+   release(&CopyWriteLock);
+ }
+ lcr3(V2P(pgdir));
+ return d;
 bad:
-  freevm(d);
-  return 0;
+ //cprintf("debug: 11");
+ freevm(d);
+ return 0;
 }
 
 //PAGEBREAK!
