@@ -91,6 +91,8 @@ trap(struct trapframe *tf)
     struct map_wmap *map;
     int segFaultFound = 0;
 
+    cprintf("Trap handler - PID: %d\n", p->pid);
+
     // if page fault addr is part of a mapping: // lazy allocation
     // handle it
     int indexOfFault = 0;
