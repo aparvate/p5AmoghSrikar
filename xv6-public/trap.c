@@ -90,6 +90,7 @@ trap(struct trapframe *tf)
     struct proc *p = myproc();
     struct map_wmap *map;
     int segFaultFound = 0;
+    int indexOfFault = -1;
 
     // if page fault addr is part of a mapping: // lazy allocation
     // handle it
@@ -99,73 +100,75 @@ trap(struct trapframe *tf)
       // Check if the faulting address lies within the current mapping's range
       if (address_of_fault >= map->addr && address_of_fault < (map->addr + map->length)) {
           segFaultFound = 1;
-
-          // Allocate a new physical page
-          char *mem = kalloc();
-          memset(mem, 0, PGSIZE);
-
-          // Calculate the start of the page for mapping
-          uint start_of_page = PGROUNDDOWN(address_of_fault);
-
-          // Handle file-backed mappings for MAP_SHARED
-          if (map->file && (map->flags & MAP_SHARED)) {
-              uint file_offset = start_of_page - map->addr; // Calculate file offset
-
-              // Read file data into the newly allocated page
-              int bytes_read = readi(map->file->ip, mem, file_offset, PGSIZE);
-              if (bytes_read < 0) {
-                  kfree(mem); // Free allocated memory on failure
-                  panic("trap: file read failed");
-              }
-          }
-
-          // Map the allocated page into the process's page table
-          if (mappages(p->pgdir, (void *)start_of_page, PGSIZE, V2P(mem), PTE_W | PTE_U) < 0) {
-              kfree(mem); // Free allocated memory on failure
-              panic("trap: page mapping failed");
-          }
-          else{
-            acquire(&CopyWriteLock);
-            uint mem_index = V2P(mem)/PGSIZE;
-            if (references[mem_index] != 0){
-              references[mem_index] = references[mem_index] + 1;
-            }
-            else{
-              references[mem_index] = 1;
-            }
-            release(&CopyWriteLock);
-          }
-        break; // Exit loop once the page fault is handled
+          indexOfFault = i;
+          break;
       }
-      else {
-        pte_t *pte;
-        pte = walkpgdir(p->pgdir, (void *)PGROUNDDOWN(address_of_fault), 0);
-        uint flags = PTE_FLAGS(*pte);
-        if((flags & PTE_U) && (flags & PTE_P) && (flags & PTE_COW)){
-          char *mem = kalloc();
-          if(mem == 0) {
-            p->killed = 1;
-            break;
-          }
-          uint pa = PTE_ADDR((*pte));
-          memmove(mem, (char *)P2V(pa), PGSIZE);
-          *pte = 0;
-          if(mappages(p->pgdir, (char*)PGROUNDDOWN(address_of_fault), PGSIZE, V2P(mem), PTE_W|PTE_U) >= 0) {
-            acquire(&CopyWriteLock);
-            references[pa / PGSIZE] --;
-            references[V2P(mem) / PGSIZE] = 1;
-            release(&CopyWriteLock);
+    }
+    if (indexOfFault < 16) {
+      // Allocate a new physical page
+      char *mem = kalloc();
+      memset(mem, 0, PGSIZE);
 
-          } else{
-            kfree(mem);
-            p->killed = 1;
-          }
+      // Calculate the start of the page for mapping
+      uint start_of_page = PGROUNDDOWN(address_of_fault);
+
+      // Handle file-backed mappings for MAP_SHARED
+      if (map->file && (map->flags & MAP_SHARED)) {
+        uint file_offset = start_of_page - map->addr; // Calculate file offset
+
+        // Read file data into the newly allocated page
+        int bytes_read = readi(map->file->ip, mem, file_offset, PGSIZE);
+        if (bytes_read < 0) {
+          kfree(mem); // Free allocated memory on failure
+          panic("trap: file read failed");
+        }
+      }
+
+      // Map the allocated page into the process's page table
+      if (mappages(p->pgdir, (void *)start_of_page, PGSIZE, V2P(mem), PTE_W | PTE_U) < 0) {
+          kfree(mem); // Free allocated memory on failure
+          panic("trap: page mapping failed");
+      }
+      else{
+        acquire(&CopyWriteLock);
+        uint mem_index = V2P(mem)/PGSIZE;
+        if (references[mem_index] != 0){
+          references[mem_index] = references[mem_index] + 1;
         }
         else{
-          cprintf("Segmentation Fault\n");
-          cprintf("Within the Else Statement\n");
+          references[mem_index] = 1;
+        }
+        release(&CopyWriteLock);
+      }
+    }
+    else {
+      pte_t *pte;
+      pte = walkpgdir(p->pgdir, (void *)PGROUNDDOWN(address_of_fault), 0);
+      uint flags = PTE_FLAGS(*pte);
+      if((flags & PTE_U) && (flags & PTE_P) && (flags & PTE_COW)){
+        char *mem = kalloc();
+        if(mem == 0) {
+          p->killed = 1;
+          break;
+        }
+        uint pa = PTE_ADDR((*pte));
+        memmove(mem, (char *)P2V(pa), PGSIZE);
+        *pte = 0;
+        if(mappages(p->pgdir, (char*)PGROUNDDOWN(address_of_fault), PGSIZE, V2P(mem), PTE_W|PTE_U) >= 0) {
+          acquire(&CopyWriteLock);
+          references[pa / PGSIZE] --;
+          references[V2P(mem) / PGSIZE] = 1;
+          release(&CopyWriteLock);
+
+        } else{
+          kfree(mem);
           p->killed = 1;
         }
+      }
+      else{
+        cprintf("Segmentation Fault\n");
+        cprintf("Within the Else Statement\n");
+        p->killed = 1;
       }
     }
 
