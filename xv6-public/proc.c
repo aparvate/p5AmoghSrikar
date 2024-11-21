@@ -15,6 +15,13 @@
 #define NULL ((void *)0)
 #endif
 
+struct spinlock ref_lock; // New lock for reference count management
+
+// void
+// init_ref_lock(void) {
+    // initlock(&ref_lock, "ref_lock");
+// }
+
 struct {
   struct spinlock lock;
   struct proc proc[NPROC];
@@ -32,6 +39,7 @@ void
 pinit(void)
 {
   initlock(&ptable.lock, "ptable");
+  initlock(&ref_lock, "ref_lock");
 }
 
 // Must be called with interrupts disabled
@@ -193,17 +201,18 @@ fork(void)
   struct proc *curproc = myproc();
 
   // Allocate process.
-  if((np = allocproc()) == 0){
+  if ((np = allocproc()) == 0) {
     return -1;
   }
 
-  // Copy process state from proc.
-  if((np->pgdir = copyuvm(curproc->pgdir, curproc->sz)) == 0){
+  // Copy process state from parent process.
+  if ((np->pgdir = copyuvm(curproc->pgdir, curproc->sz)) == 0) {
     kfree(np->kstack);
     np->kstack = 0;
     np->state = UNUSED;
     return -1;
   }
+
   np->sz = curproc->sz;
   np->parent = curproc;
   *np->tf = *curproc->tf;
@@ -211,23 +220,63 @@ fork(void)
   // Clear %eax so that fork returns 0 in the child.
   np->tf->eax = 0;
 
-  for(i = 0; i < NOFILE; i++)
-    if(curproc->ofile[i])
+  // Duplicate open file descriptors.
+  for (i = 0; i < NOFILE; i++) {
+    if (curproc->ofile[i]) {
       np->ofile[i] = filedup(curproc->ofile[i]);
+    }
+  }
   np->cwd = idup(curproc->cwd);
 
   safestrcpy(np->name, curproc->name, sizeof(curproc->name));
 
+  // Copy `maps` for memory-mapped regions.
+  for (i = 0; i < 16; i++) {
+    struct map_wmap *m = &curproc->maps[i];
+
+    // Skip invalid or unused mappings.
+    if (m->addr == 0 || m->length == 0) {
+      continue;
+    }
+
+    // Handle shared mappings (MAP_SHARED).
+    if (m->flags & MAP_SHARED) {
+      for (uint offset = 0; offset < m->length; offset += PGSIZE) {
+        void *va = (void *)(m->addr + offset);
+        pte_t *parentPTE = walkpgdir(curproc->pgdir, va, 0);
+
+        // Map the shared physical page into the child's page table.
+        if (parentPTE && (*parentPTE & PTE_P)) {
+          uint pa = PTE_ADDR(*parentPTE); // Physical address of the page.
+
+          if (mappages(np->pgdir, va, PGSIZE, pa, PTE_U | PTE_W) < 0) {
+            freevm(np->pgdir);
+            kfree(np->kstack);
+            np->state = UNUSED;
+            return -1;
+          }
+        }
+      }
+
+      // Add the mapping to the child's `maps` array.
+      for (int j = 0; j < 16; j++) {
+        if (np->maps[j].length == 0) { // Find an empty slot.
+          np->maps[j] = *m;           // Copy the mapping.
+          break;
+        }
+      }
+    }
+  }
+
   pid = np->pid;
 
   acquire(&ptable.lock);
-
   np->state = RUNNABLE;
-
   release(&ptable.lock);
 
   return pid;
 }
+
 
 // Exit the current process.  Does not return.
 // An exited process remains in the zombie state

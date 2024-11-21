@@ -23,7 +23,7 @@ struct {
   struct run *freelist;
 } kmem;
 
-uint8_ts references[2^16] = {0};
+uchar references[2^16];
 // Initialization happens in two phases.
 // 1. main() calls kinit1() while still using entrypgdir to place just
 // the pages mapped by entrypgdir on free list.

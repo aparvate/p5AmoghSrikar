@@ -12,6 +12,7 @@ struct cpu {
 
 extern struct cpu cpus[NCPU];
 extern int ncpu;
+extern uchar references;
 
 //PAGEBREAK: 17
 // Saved registers for kernel context switches.
