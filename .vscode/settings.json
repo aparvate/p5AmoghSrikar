@@ -4,6 +4,7 @@
     "spinlock.h": "c",
     "x86.h": "c",
     "wmap.h": "c",
-    "types.h": "c"
+    "types.h": "c",
+    "ios": "c"
   }
 }
