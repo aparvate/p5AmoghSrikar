@@ -265,7 +265,9 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
     if (references[mem_index] != 0){
       references[mem_index] = references[mem_index] + 1;
     }
-    references[mem_index] = 1;
+    else{
+      references[mem_index] = 1;
+    }
     release(&CopyWriteLock);
   }
   return newsz;

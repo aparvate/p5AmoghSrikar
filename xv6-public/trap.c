@@ -19,6 +19,9 @@ extern uint vectors[];  // in vectors.S: array of 256 entry pointers
 struct spinlock tickslock;
 uint ticks;
 
+extern struct spinlock CopyWriteLock;
+extern uchar references[PHYSTOP/PGSIZE];
+
 void
 tvinit(void)
 {
@@ -121,8 +124,18 @@ trap(struct trapframe *tf)
                 kfree(mem); // Free allocated memory on failure
                 panic("trap: page mapping failed");
             }
-
-            break; // Exit loop once the page fault is handled
+            else{
+              acquire(&CopyWriteLock);
+              uint mem_index = V2P(mem)/PGSIZE;
+              if (references[mem_index] != 0){
+                references[mem_index] = references[mem_index] + 1;
+              }
+              else{
+                references[mem_index] = 1;
+              }
+              release(&CopyWriteLock);
+            }
+          break; // Exit loop once the page fault is handled
         }
     }
 
