@@ -95,51 +95,51 @@ trap(struct trapframe *tf)
     // if page fault addr is part of a mapping: // lazy allocation
     // handle it
     for (int i = 0; i < 16; i++) {
-      cprintf("Index in trap handler: %d", i);
+      cprintf("Index in trap handler: %d\n", i);
       map = &p->maps[i];
 
       // Check if the faulting address lies within the current mapping's range
       if (address_of_fault >= map->addr && address_of_fault < (map->addr + map->length)) {
         segFaultFound = 1;
         indexOfFault = i;
-        cprintf("Index of fault addr found: %d", i);
+        cprintf("Index of fault addr found: %d\n", i);
         break;
       }
     }
     if (indexOfFault < 16) {
-      cprintf("Go into lazy handler");
+      cprintf("Go into lazy handler\n");
       // Allocate a new physical page
       char *mem = kalloc();
       memset(mem, 0, PGSIZE);
 
       // Calculate the start of the page for mapping
       uint start_of_page = PGROUNDDOWN(address_of_fault);
-      cprintf("Page start calculated");
+      cprintf("Page start calculated\n");
 
       // Handle file-backed mappings for MAP_SHARED
       if (map->file && (map->flags & MAP_SHARED)) {
         uint file_offset = start_of_page - map->addr; // Calculate file offset
-        cprintf("Filed offset calculated");
+        cprintf("Filed offset calculated\n");
 
         // Read file data into the newly allocated page
         int bytes_read = readi(map->file->ip, mem, file_offset, PGSIZE);
-        cprintf("Bytes read");
+        cprintf("Bytes read\n");
         if (bytes_read < 0) {
           kfree(mem); // Free allocated memory on failure
-          panic("trap: file read failed");
+          panic("trap: file read failed\n");
         }
-        cprintf("trap: file read succeeded");
+        cprintf("trap: file read succeeded\n");
       }
 
       // Map the allocated page into the process's page table
       if (mappages(p->pgdir, (void *)start_of_page, PGSIZE, V2P(mem), PTE_W | PTE_U) < 0) {
           kfree(mem); // Free allocated memory on failure
-          panic("trap: page mapping failed");
+          panic("trap: page mapping failed\n");
       }
       else{
-        cprintf("trap: page mapping succeded");
+        cprintf("trap: page mapping succeded\n");
         acquire(&CopyWriteLock);
-        cprintf("CopyWriteLock acquired in trap handler");
+        cprintf("CopyWriteLock acquired in trap handler\n");
         uint mem_index = V2P(mem)/PGSIZE;
         if (references[mem_index] != 0){
           references[mem_index] = references[mem_index] + 1;
@@ -147,13 +147,13 @@ trap(struct trapframe *tf)
         else{
           references[mem_index] = 1;
         }
-        cprintf("References decremented");
+        cprintf("References decremented\n");
         release(&CopyWriteLock);
-        cprintf("Lock released");
+        cprintf("Lock released\n");
       }
     }
     else {
-      cprintf("Past 15, 16 or above, non-lazy");
+      cprintf("Past 15, 16 or above, non-lazy\n");
       pte_t *pte;
       pte = walkpgdir(p->pgdir, (void *)PGROUNDDOWN(address_of_fault), 0);
       uint flags = PTE_FLAGS(*pte);
