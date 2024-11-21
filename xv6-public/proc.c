@@ -237,6 +237,7 @@ exit(void)
 {
   struct proc *curproc = myproc();
   struct proc *p;
+  struct map_wmap *map = NULL;
   int fd;
 
   if(curproc == initproc)
@@ -248,6 +249,33 @@ exit(void)
       fileclose(curproc->ofile[fd]);
       curproc->ofile[fd] = 0;
     }
+  }
+
+  for (int i = 0; i < 16; i++) {
+    map = &curproc->maps[i];
+    // If no matching mapping is found, return failure
+    if (map == NULL) {
+      return FAILED;
+    }
+    // Free allocated pages
+    for (uint a = map->addr; a < map->addr + map->length; a += PGSIZE) {
+      pte_t *pte = walkpgdir(curproc->pgdir, (char *)a, 0);
+      if (pte && (*pte & PTE_P)) {
+        uint pa = PTE_ADDR(*pte);
+        kfree(P2V(pa)); // Free the physical memory
+        *pte = 0;       // Clear the PTE
+      }
+    }
+
+    // Clear the mapping metadata
+    map->addr = 0;
+    map->length = 0;
+    map->flags = 0;
+    map->file = NULL;
+    map->fd = -1;
+
+    // Flush the TLB to ensure no stale entries
+    lcr3(V2P(curproc->pgdir));
   }
 
   begin_op();
