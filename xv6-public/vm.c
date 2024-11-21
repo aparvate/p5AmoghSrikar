@@ -367,13 +367,13 @@ copyuvm(pde_t *pgdir, uint sz)
       flags &= ~PTE_W;
       flags |= PTE_COW;
     }
-    if(mappages(pgdir, (void*)i, PGSIZE, pa, flags) < 0) {
-      goto bad;
-    }
-    if(mappages(d, (void*)i, PGSIZE, V2P(mem), flags) < 0) {
-      kfree(mem);
-      goto bad;
-    }
+    // if(mappages(pgdir, (void*)i, PGSIZE, pa, flags) < 0) {
+    //   goto bad;
+    // }
+    // if(mappages(d, (void*)i, PGSIZE, V2P(mem), flags) < 0) {
+    //   kfree(mem);
+    //   goto bad;
+    // }
     acquire(&CopyWriteLock);
     references[pa/PGSIZE] = references[pa/PGSIZE] + 1;
     release(&CopyWriteLock);
