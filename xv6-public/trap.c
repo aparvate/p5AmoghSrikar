@@ -95,33 +95,40 @@ trap(struct trapframe *tf)
     // if page fault addr is part of a mapping: // lazy allocation
     // handle it
     for (int i = 0; i < 16; i++) {
+      cprintf("Index in trap handler: %d", i);
       map = &p->maps[i];
 
       // Check if the faulting address lies within the current mapping's range
       if (address_of_fault >= map->addr && address_of_fault < (map->addr + map->length)) {
-          segFaultFound = 1;
-          indexOfFault = i;
-          break;
+        segFaultFound = 1;
+        indexOfFault = i;
+        cprintf("Index of fault addr found: %d", i);
+        break;
       }
     }
     if (indexOfFault < 16) {
+      cprintf("Go into lazy handler");
       // Allocate a new physical page
       char *mem = kalloc();
       memset(mem, 0, PGSIZE);
 
       // Calculate the start of the page for mapping
       uint start_of_page = PGROUNDDOWN(address_of_fault);
+      cprintf("Page start calculated");
 
       // Handle file-backed mappings for MAP_SHARED
       if (map->file && (map->flags & MAP_SHARED)) {
         uint file_offset = start_of_page - map->addr; // Calculate file offset
+        cprintf("Filed offset calculated");
 
         // Read file data into the newly allocated page
         int bytes_read = readi(map->file->ip, mem, file_offset, PGSIZE);
+        cprintf("Bytes read");
         if (bytes_read < 0) {
           kfree(mem); // Free allocated memory on failure
           panic("trap: file read failed");
         }
+        cprintf("trap: file read succeeded");
       }
 
       // Map the allocated page into the process's page table
@@ -130,7 +137,9 @@ trap(struct trapframe *tf)
           panic("trap: page mapping failed");
       }
       else{
+        cprintf("trap: page mapping succeded");
         acquire(&CopyWriteLock);
+        cprintf("CopyWriteLock acquired in trap handler");
         uint mem_index = V2P(mem)/PGSIZE;
         if (references[mem_index] != 0){
           references[mem_index] = references[mem_index] + 1;
@@ -138,10 +147,13 @@ trap(struct trapframe *tf)
         else{
           references[mem_index] = 1;
         }
+        cprintf("References decremented");
         release(&CopyWriteLock);
+        cprintf("Lock released");
       }
     }
     else {
+      cprintf("Past 15, 16 or above, non-lazy");
       pte_t *pte;
       pte = walkpgdir(p->pgdir, (void *)PGROUNDDOWN(address_of_fault), 0);
       uint flags = PTE_FLAGS(*pte);
