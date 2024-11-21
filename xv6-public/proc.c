@@ -40,67 +40,70 @@ fdalloc(struct file *f)
 
 // wmap system call maps a virtual address to a physical address
 uint
-wmap(uint addr, int length, int flags, int fd) {;
-  if (!(flags & MAP_FIXED) || !(flags & MAP_SHARED)) {
-    return FAILED;
-  }
-  if (length <= 0) {
-    return FAILED;
-  }
-  if (addr % PGSIZE != 0) {
-    return FAILED;
-  }
-  if (addr < KERNSTART || addr + length > KERNBASE) {
-    return FAILED;
-  }
+wmap(uint start_addr, int size, int map_flags, int file_desc) {
+    // Validate the input flags
+    if (!(map_flags & MAP_FIXED) || !(map_flags & MAP_SHARED)) {
+        return FAILED;
+    }
 
-  struct proc *curproc = myproc();
-  struct file *file;
+    // Validate size and address alignment
+    if (size <= 0 || start_addr % PGSIZE != 0) {
+        return FAILED;
+    }
 
-  // Check maximum number of mmaps
-  if(curproc->wmapinfo.total_mmaps >= MAX_WMMAP_INFO)
-      return FAILED;
+    // Ensure the address is within the valid kernel range
+    if (start_addr < KERNSTART || (start_addr + size) > KERNBASE) {
+        return FAILED;
+    }
 
-  // Check for overlapping mappings
-  for (int i = 0; i < 16; i++) {
-      if (curproc->wmapinfo.length != 0) {
-        int mapStart = curproc->wmapinfo.addr[i];
-        int mapEnd = curproc->wmapinfo.addr[i];
-        if (!(addr + length <= mapStart || addr >= (mapStart + mapEnd))) {
-          return FAILED;
+    struct proc *current_process = myproc();
+    struct file *file_ptr = NULL;
+
+    // Check if the process has reached its mmap limit
+    if (current_process->wmapinfo.total_mmaps >= MAX_WMMAP_INFO) {
+        return FAILED;
+    }
+
+    // Check for overlapping memory mappings
+    for (int i = 0; i < MAX_WMMAP_INFO; i++) {
+        if (current_process->wmapinfo.length[i] != 0) { // Valid mapping exists
+            uint existing_start = current_process->wmapinfo.addr[i];
+            uint existing_end = existing_start + current_process->wmapinfo.length[i];
+            if (!(start_addr + size <= existing_start || start_addr >= existing_end)) {
+                return FAILED; // Overlap detected
+            }
         }
-      }
-  }
+    }
 
-    // If file-backed mapping, validate fd
-    if(!(flags & MAP_ANONYMOUS)) {
-        if(fd < 0 || fd >= NOFILE || curproc->ofile[fd] == 0)
+    // If not an anonymous mapping, validate and duplicate the file descriptor
+    if (!(map_flags & MAP_ANONYMOUS)) {
+        if (file_desc < 0 || file_desc >= NOFILE || (file_ptr = current_process->ofile[file_desc]) == NULL) {
             return FAILED;
+        }
+        filedup(file_ptr); // Increment the file reference count
     }
 
-    // Add mapping to the process's mmap list to track the new mappings in proc's virtual address space
-    curproc->wmapinfo.addr[curproc->wmapinfo.total_mmaps] = addr;
-    curproc->wmapinfo.length[curproc->wmapinfo.total_mmaps] = length;
-    curproc->wmapinfo.n_loaded_pages[curproc->wmapinfo.total_mmaps] = 0; // Initialize loaded pages to 0 for lazy allocation
+    // Add the new mapping to the process's wmapinfo structure
+    int mapping_index = current_process->wmapinfo.total_mmaps;
+    current_process->wmapinfo.addr[mapping_index] = start_addr;
+    current_process->wmapinfo.length[mapping_index] = size;
+    current_process->wmapinfo.n_loaded_pages[mapping_index] = 0; // Lazy allocation
 
-    // Add mapping to the process's file info list to track the file descriptor and flags for each mapping
-    // NOTE: We aim to keep these two lists in sync, so that the index in the mmap list corresponds to the index in the file info list
-    // We have two seperate structs to maintain a correct interface for system calls expecting wmapinfo in a certain format
-    //curproc->wmapinfo.fd[curproc->wmapinfo.total_mmaps] = (flags & MAP_ANONYMOUS) ? -1 : fd;
-
-    if(flags & MAP_ANONYMOUS){
-      curproc->wmapinfo.fd[curproc->wmapinfo.total_mmaps] = -1;
-    }else{
-      file = curproc->ofile[fd];
-      struct file *newFile = filedup(file);
-      int newFd = fdalloc(newFile);
-      curproc->wmapinfo.fd[curproc->wmapinfo.total_mmaps] = newFd;
+    // Handle file descriptor and flags for the mapping
+    if (map_flags & MAP_ANONYMOUS) {
+        current_process->wmapinfo.fd[mapping_index] = -1; // No file backing
+    } else {
+        struct file *duplicated_file = filedup(file_ptr);
+        int new_fd = fdalloc(duplicated_file); // Allocate a new file descriptor
+        current_process->wmapinfo.fd[mapping_index] = new_fd;
     }
-    curproc->wmapinfo.flags[curproc->wmapinfo.total_mmaps] = flags;
 
-    curproc->wmapinfo.total_mmaps++;
+    current_process->wmapinfo.flags[mapping_index] = map_flags;
 
-  return addr;
+    // Increment the total number of mappings
+    current_process->wmapinfo.total_mmaps++;
+
+    return start_addr; // Return the starting address of the mapping
 }
 
 // wunmap system call unmaps a virtual address
@@ -133,8 +136,6 @@ wunmap(uint addr) {
     
 
   }
-
-  
 
   //Find the mapping to unmap
   int i;
