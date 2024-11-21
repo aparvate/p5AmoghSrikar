@@ -254,24 +254,24 @@ fork(void)
         pte_t *parentPTE = walkpgdir(curproc->pgdir, va, 0);
 
         // Map the shared physical page into the child's page table.
-        cprintf("Check if parent page table entry to 0");
+        cprintf("Check if parent page table entry to 0\n");
         if (parentPTE && (*parentPTE & PTE_P)) {
           uint pa = PTE_ADDR(*parentPTE); // Physical address of the page.
 
-          cprintf("Check if mappages fails");
+          cprintf("Check if mappages fails\n");
           if (mappages(np->pgdir, va, PGSIZE, pa, PTE_U | PTE_W) < 0) {
             freevm(np->pgdir);
             kfree(np->kstack);
             np->state = UNUSED;
             return -1;
           }
-          cprintf("Mappages succeeded");
+          cprintf("Mappages succeeded\n");
         }
       }
 
       // Add the mapping to the child's `maps` array.
       for (int j = 0; j < 16; j++) {
-        cprintf("child maps array index: %d", j);
+        cprintf("child maps array index: %d\n", j);
         if (np->maps[j].length == 0) { // Find an empty slot.
           np->maps[j] = *m;           // Copy the mapping.
           break;
@@ -281,15 +281,15 @@ fork(void)
   }
 
   pid = np->pid;
-  cprintf("PID set!");
+  cprintf("PID set!\n");
 
   acquire(&ptable.lock);
-  cprintf("Lock acquired");
+  cprintf("Lock acquired\n");
   np->state = RUNNABLE;
   release(&ptable.lock);
-  cprintf("Lock released");
+  cprintf("Lock released\n");
 
-  cprintf("Return pid: %d", pid);
+  cprintf("Return pid: %d\n", pid);
   return pid;
 }
 
