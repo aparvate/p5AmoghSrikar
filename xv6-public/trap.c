@@ -163,6 +163,7 @@ trap(struct trapframe *tf)
         }
         else{
           cprintf("Segmentation Fault\n");
+          cprintf("Within the Else Statement\n");
           p->killed = 1;
         }
       }
@@ -171,6 +172,7 @@ trap(struct trapframe *tf)
       
     if(segFaultFound == 0) {
       cprintf("Segmentation Fault\n");
+      cprintf("Without the Else statement\n");
       // kill the process
       p->killed = 1;
     }
