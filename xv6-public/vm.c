@@ -362,8 +362,12 @@ copyuvm(pde_t *pgdir, uint sz)
    pa = PTE_ADDR(*pte);
    flags = PTE_FLAGS(*pte);
 
-  //flags |= PTE_U;
-  //flags |= PTE_P;
+  if (!(flags & PTE_P)){
+    flags |= PTE_P;
+  }
+  if (!(flags & PTE_U)){
+    flags |= PTE_U;
+  }
    if((flags & PTE_U) && (flags & PTE_W)){
      flags |= PTE_COW;
      flags &= ~PTE_W;
