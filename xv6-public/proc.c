@@ -49,7 +49,7 @@ wmap(uint addr, int length, int flags, int fd) {;
   }
 
   // Validate address alignment and range
-  if (!IS_VALID_WMAP_ADDR(addr))
+  if (!(((addr) % PGSIZE == 0) && ((addr) >= KERNSTART) && ((addr) < KERNBASE)))
     return FAILED;
 
   // Validate length
@@ -111,7 +111,7 @@ wunmap(uint addr) {
 
   for(int i = 0; i <MAX_WMMAP_INFO; i++){
     // Validate address alignment and range
-    if (IS_VALID_WMAP_ADDR(addr)){
+    if ((((addr) % PGSIZE == 0) && ((addr) >= KERNSTART) && ((addr) < KERNBASE))){
       int mapping_still_shared = 0;
       uint end_addr = addr + curproc->wmapinfo.length[i];
       for(uint a = addr; a < end_addr; a += PGSIZE){

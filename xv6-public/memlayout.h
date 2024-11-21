@@ -6,7 +6,7 @@
 
 // Key addresses for address space layout (see kmap in vm.c for layout)
 #define KERNBASE 0x80000000         // First kernel virtual address
-#define WMAPBASE 0x60000000         // First address of wmap, provided by P5 writeup
+#define KERNSTART 0x60000000         // First address of wmap, provided by P5 writeup
 #define KERNLINK (KERNBASE+EXTMEM)  // Address where kernel is linked
 
 #define V2P(a) (((uint) (a)) - KERNBASE)
@@ -14,8 +14,3 @@
 
 #define V2P_WO(x) ((x) - KERNBASE)    // same as V2P, but without casts
 #define P2V_WO(x) ((x) + KERNBASE)    // same as P2V, but without casts
-
-// Validate if an address is page-aligned and within the wmap range
-#define IS_VALID_WMAP_ADDR(addr) \
-  (((addr) % PGSIZE == 0) && ((addr) >= WMAPBASE) && ((addr) < KERNBASE))
-

@@ -77,7 +77,7 @@ lazy_allocate_mapping(uint fault_addr) {
   //pte_t *pte = walkpgdir(curproc->pgdir, (void *)page_addr, 0);
 
   // Validate the fault address
-  if (IS_VALID_WMAP_ADDR(fault_addr)) {
+  if ((((fault_addr) % PGSIZE == 0) && ((fault_addr) >= KERNSTART) && ((fault_addr) < KERNBASE))) {
     //return 0;
   //uint page_addr = PGROUNDDOWN(fault_addr); // Page-aligned address
   
@@ -254,77 +254,7 @@ trap(struct trapframe *tf)
     lapiceoi();
     break;
   case T_PGFLT:
-    // uint fault_addr = rcr2(); 
-    // uint addr = PGROUNDDOWN(fault_addr); 
-    // struct proc *cproc = myproc();
-    // pte_t *pte = walkpgdir(cproc->pgdir, (void*)addr, 0);
-    // //uint pfn = get_pfnpa(PTE_ADDR(pte));
-    // int ref_count = get_ref(PTE_ADDR(pte));
-    // int writeable = PTE_FLAGS(pte) & PTE_W;
-    // int was_write = PTE_FLAGS(pte) & PTE_COW;
-
-    // if(writeable){
-    //   lazy_allocate_mapping(fault_addr);
-    // }else if(was_write != 1){
-    //   //cprintf("Segmentation Fault: try to write without permission\n");
-    //   cproc->killed = 1;
-    //   break;
-    // } else if(ref_count == 1){
-    //   cprintf("ref count is 1: setting to writable");
-    //   *pte |= PTE_W;
-    //   *pte &= ~PTE_COW; 
-    //   switchkvm();
-    // }else if (ref_count > 1) {
-    //   // deep copy the page and set it to writeable and flush TLB
-    //   char *mem;
-    //   uint pa = PTE_ADDR(pte);
-    //   int flags = PTE_FLAGS(pte);
-    //   if((mem = kalloc()) == 0) {
-    //     cprintf("Segmentation Fault: kalloc failed\n");
-    //     cproc->killed = 1;
-    //     break;
-    //   }
-    //   memmove(mem, (char*)P2V(pa), PGSIZE);
-    //   if(mappages(pte, (void*)addr, PGSIZE, V2P(mem), flags) < 0) {
-    //     cprintf("Segmentation Fault: mappages failed\n");
-    //     kfree(mem);
-    //     cproc->killed = 1;
-    //     break;
-    //   }
-    //   if (*pte & PTE_COW) {
-    //     *pte &= ~PTE_COW;
-    //     *pte |= PTE_W;
-    //     switchkvm();
-    //   }
-
-    //   dec_ref(pa);
-    // }
-    // else {
-    //   panic("ref_count <= 0");
-    // }
-
     uint fault_addr = rcr2(); // Get the faulting address
-
-    // cprintf("this is the address %x", fault_addr);
-    // if(IS_VALID_WMAP_ADDR(fault_addr)){
-    //   if (!lazy_allocate_mapping(fault_addr)) { // lazy allocation
-    //     struct proc *curproc = myproc();
-    //     cprintf("Segmentation Fault\n");
-    //     curproc->killed = 1;
-    //     break;
-    //   }
-    // }else{
-    //   if (!cow(fault_addr)) { // lazy allocation
-    //     struct proc *curproc = myproc();
-    //     cprintf("Segmentation Fault\n");
-    //     curproc->killed = 1;
-    //     break;
-    //   }
-
-    // }
-
-    //uint fault_addr = rcr2(); // Get the faulting address
-
     if (lazy_allocate_mapping(fault_addr) == -1) { // lazy allocation + copy-on-write
         struct proc *curproc = myproc();
         cprintf("Segmentation Fault\n");
