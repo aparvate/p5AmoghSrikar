@@ -363,7 +363,7 @@ copyuvm(pde_t *pgdir, uint sz)
     if((mem = kalloc()) == 0)
       goto bad;
 
-    cprintf("Value of flags is: %x", flags);
+    cprintf("Value of flags is: 0x%x\n", flags);
     flags |= PTE_P;
     flags |= PTE_U;
     if(flags & PTE_W){
