@@ -14,10 +14,6 @@ struct wmapinfo {
     int addr[MAX_WMMAP_INFO];           // Starting address of mapping
     int length[MAX_WMMAP_INFO];         // Size of mapping
     int n_loaded_pages[MAX_WMMAP_INFO]; // Number of pages physically loaded into memory
-};
-
-// Additional struct to store file descriptor and flags for each mapping
-struct wmap_file_info {
     int fd[MAX_WMMAP_INFO];             // File descriptor for file-backed mappings
     int flags[MAX_WMMAP_INFO];          // Flags for each mapping
 };

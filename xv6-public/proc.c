@@ -87,17 +87,17 @@ wmap(uint addr, int length, int flags, int fd) {;
     // Add mapping to the process's file info list to track the file descriptor and flags for each mapping
     // NOTE: We aim to keep these two lists in sync, so that the index in the mmap list corresponds to the index in the file info list
     // We have two seperate structs to maintain a correct interface for system calls expecting wmapinfo in a certain format
-    //curproc->wmap_file_info.fd[curproc->wmapinfo.total_mmaps] = (flags & MAP_ANONYMOUS) ? -1 : fd;
+    //curproc->wmapinfo.fd[curproc->wmapinfo.total_mmaps] = (flags & MAP_ANONYMOUS) ? -1 : fd;
 
     if(flags & MAP_ANONYMOUS){
-      curproc->wmap_file_info.fd[curproc->wmapinfo.total_mmaps] = -1;
+      curproc->wmapinfo.fd[curproc->wmapinfo.total_mmaps] = -1;
     }else{
       struct file *f = curproc->ofile[fd];
       struct file *newFile = filedup(f);
       int newFd = fdalloc(newFile);
-      curproc->wmap_file_info.fd[curproc->wmapinfo.total_mmaps] = newFd;
+      curproc->wmapinfo.fd[curproc->wmapinfo.total_mmaps] = newFd;
     }
-    curproc->wmap_file_info.flags[curproc->wmapinfo.total_mmaps] = flags;
+    curproc->wmapinfo.flags[curproc->wmapinfo.total_mmaps] = flags;
 
     curproc->wmapinfo.total_mmaps++;
 
@@ -152,9 +152,9 @@ wunmap(uint addr) {
       return FAILED;
 
   // Check if the mapping is file-backed
-  if(curproc->wmap_file_info.fd[i] >= 0 && !(curproc->wmap_file_info.flags[i] & MAP_ANONYMOUS)) {
+  if(curproc->wmapinfo.fd[i] >= 0 && !(curproc->wmapinfo.flags[i] & MAP_ANONYMOUS)) {
       // Write the file back to disk (no need to check if data has been modified/is dirty)
-      struct file *f = curproc->ofile[curproc->wmap_file_info.fd[i]];
+      struct file *f = curproc->ofile[curproc->wmapinfo.fd[i]];
       // NOTE: We assume that the file is already open, because the file descriptor is valid
       // We also assume the file is of type INODE, as stated in the writeup      
       // Write the contents of the memory mapping to the file
@@ -193,8 +193,8 @@ wunmap(uint addr) {
       curproc->wmapinfo.n_loaded_pages[i] = curproc->wmapinfo.n_loaded_pages[i + 1];
 
       // Remove the mapping from the file info list
-      curproc->wmap_file_info.fd[i] = curproc->wmap_file_info.fd[i + 1];
-      curproc->wmap_file_info.flags[i] = curproc->wmap_file_info.flags[i + 1];
+      curproc->wmapinfo.fd[i] = curproc->wmapinfo.fd[i + 1];
+      curproc->wmapinfo.flags[i] = curproc->wmapinfo.flags[i + 1];
   }
 
   curproc->wmapinfo.total_mmaps--;
@@ -430,13 +430,13 @@ fork(void)
     np->wmapinfo.n_loaded_pages[i] = curproc->wmapinfo.n_loaded_pages[i];
 
     // Copy file info for file-backed mappings.
-    np->wmap_file_info.fd[i] = curproc->wmap_file_info.fd[i];
-    np->wmap_file_info.flags[i] = curproc->wmap_file_info.flags[i];
-    if (curproc->wmap_file_info.fd[i] >= 0) {
-      struct file *f = curproc->ofile[curproc->wmap_file_info.fd[i]];
+    np->wmapinfo.fd[i] = curproc->wmapinfo.fd[i];
+    np->wmapinfo.flags[i] = curproc->wmapinfo.flags[i];
+    if (curproc->wmapinfo.fd[i] >= 0) {
+      struct file *f = curproc->ofile[curproc->wmapinfo.fd[i]];
       struct file *copy = filedup(f);
       int newFd = fdalloc(copy);
-      np->wmap_file_info.fd[i] = newFd;
+      np->wmapinfo.fd[i] = newFd;
     }
     // Map the same virtual -> physical mappings for the child process.
     for (uint addr = curproc->wmapinfo.addr[i]; addr < curproc->wmapinfo.addr[i] + curproc->wmapinfo.length[i]; addr += PGSIZE) {

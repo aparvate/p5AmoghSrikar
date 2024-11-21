@@ -107,8 +107,8 @@ lazy_allocate_mapping(uint fault_addr) {
             }
 
             // Check if the page is file-backed
-            if (curproc->wmap_file_info.fd[i] >= 0 && !(curproc->wmap_file_info.flags[i] & MAP_ANONYMOUS)) {
-                struct file *f = curproc->ofile[curproc->wmap_file_info.fd[i]];
+            if (curproc->wmapinfo.fd[i] >= 0 && !(curproc->wmapinfo.flags[i] & MAP_ANONYMOUS)) {
+                struct file *f = curproc->ofile[curproc->wmapinfo.fd[i]];
                 // NOTE: We assume that the file is already open, because the file descriptor is valid
                 // We also assume the file is of type INODE, as stated in the writeup
                 
