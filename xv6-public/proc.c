@@ -10,6 +10,10 @@
 #include "fs.h"
 #include "file.h"
 
+#ifndef NULL
+#define NULL ((void *)0)
+#endif
+
 struct {
   struct spinlock lock;
   struct proc proc[NPROC];
