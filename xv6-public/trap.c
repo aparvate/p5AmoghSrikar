@@ -7,6 +7,11 @@
 #include "proc.h"
 #include "traps.h"
 #include "spinlock.h"
+#include <stdbool.h>
+#include "wmap.h"
+#include "sleeplock.h"
+#include "fs.h"
+#include "file.h"
 
 // Interrupt descriptor table (shared by all CPUs).
 struct gatedesc idt[256];
@@ -85,27 +90,42 @@ trap(struct trapframe *tf)
 
     // if page fault addr is part of a mapping: // lazy allocation
     // handle it
-    for(int i=0; i<16; i++) {
-      map = &p->maps[i];
-      // check if address of fault is within the bounds
-      if(address_of_fault >= map -> addr && address_of_fault < (map -> addr + map -> length)) {
-        segFaultFound = 1;
+    for (int i = 0; i < 16; i++) {
+        map = &p->maps[i];
 
-        // allocate the page now
-        char *mem = kalloc();
-        memset(mem, 0, PGSIZE);
+        // Check if the faulting address lies within the current mapping's range
+        if (address_of_fault >= map->addr && address_of_fault < (map->addr + map->length)) {
+            segFaultFound = 1;
 
-        // get the start of the page, and allocate that
-        uint start_of_page = PGROUNDDOWN(address_of_fault);
-        if(mappages(p -> pgdir, (void *) start_of_page, PGSIZE, V2P(mem), PTE_W | PTE_U) < 0) {
-          kfree(mem);
-          panic("failure in trap handler");
+            // Allocate a new physical page
+            char *mem = kalloc();
+            memset(mem, 0, PGSIZE);
+
+            // Calculate the start of the page for mapping
+            uint start_of_page = PGROUNDDOWN(address_of_fault);
+
+            // Handle file-backed mappings for MAP_SHARED
+            if (map->file && (map->flags & MAP_SHARED)) {
+                uint file_offset = start_of_page - map->addr; // Calculate file offset
+
+                // Read file data into the newly allocated page
+                int bytes_read = readi(map->file->ip, mem, file_offset, PGSIZE);
+                if (bytes_read < 0) {
+                    kfree(mem); // Free allocated memory on failure
+                    panic("trap: file read failed");
+                }
+            }
+
+            // Map the allocated page into the process's page table
+            if (mappages(p->pgdir, (void *)start_of_page, PGSIZE, V2P(mem), PTE_W | PTE_U) < 0) {
+                kfree(mem); // Free allocated memory on failure
+                panic("trap: page mapping failed");
+            }
+
+            break; // Exit loop once the page fault is handled
         }
-        
-        break;
-      }
-
     }
+
       
     if(segFaultFound == 0) {
       cprintf("Segmentation Fault\n");
