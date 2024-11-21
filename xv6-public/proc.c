@@ -315,7 +315,7 @@ exit(void)
 
     // Invalidate PTEs for the mapping's address range
     for (uint addr = map->addr; addr < map->addr + map->length; addr += PGSIZE) {
-      pde_t curpgdir = curproc->pgdir;
+      pde_t *curpgdir = curproc->pgdir;
       pte_t *pte = walkpgdir(curpgdir, (void *)addr, 0);
       if (pte && (*pte & PTE_P)) {
         *pte = *pte & ~PTE_P;  // Clear the PTE to invalidate the mapping
