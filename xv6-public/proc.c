@@ -566,6 +566,8 @@ wmapHelper(uint addr, int length, int flags, int fd) {
     if (fd < 0 || fd >= NOFILE || (file = curr_p->ofile[fd]) == NULL) {
       return FAILED;
     }
+    //change made
+    filedup(file);
   }
 
     // iterating through every map in our array, and checking to see if there's any overlap
@@ -666,9 +668,9 @@ int wunmapHelper(uint addr) {
       if (pte && (*pte & PTE_P)) {
         char *data = (char *)P2V(PTE_ADDR(*pte));
         begin_op();
-        ilock(map->file->ip);
+        //        ilock(map->file->ip);
         writei(map->file->ip, data, offset, PGSIZE);
-        iunlock(map->file->ip);
+        //iunlock(map->file->ip);
         end_op();
       }
     }
