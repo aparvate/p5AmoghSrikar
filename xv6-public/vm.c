@@ -69,11 +69,9 @@ mappages(pde_t *pgdir, void *va, uint size, uint pa, int perm)
 
   a = (char*)PGROUNDDOWN((uint)va);
   last = (char*)PGROUNDDOWN(((uint)va) + size - 1);
-  cprintf("Before loop\n");
   for(;;){
     if((pte = walkpgdir(pgdir, a, 1)) == 0)
       return -1;
-    cprintf("pass walkpgdir\n");
     if(*pte & PTE_P)
       panic("remap");
     *pte = pa | perm | PTE_P;
@@ -369,7 +367,7 @@ copyuvm(pde_t *pgdir, uint sz)
       flags |= PTE_COW;
       flags &= ~PTE_W;
     }
-     *pte = 0;
+    *pte &= ~PTE_P;
     if(mappages(pgdir, (void*)i, PGSIZE, pa, flags) < 0) {
       goto bad;
     }
