@@ -132,7 +132,7 @@ trap(struct trapframe *tf)
       }
 
       // Map the allocated page into the process's page table
-      cprintf("Before mapping, pte check: %d", p->pgdir);
+      p->pgdir = 0;
       if (mappages(p->pgdir, (void *)start_of_page, PGSIZE, V2P(mem), PTE_W | PTE_U) < 0) {
           kfree(mem); // Free allocated memory on failure
           panic("trap: page mapping failed\n");
