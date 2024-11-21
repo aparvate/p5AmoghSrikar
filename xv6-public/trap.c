@@ -91,13 +91,13 @@ trap(struct trapframe *tf)
     struct map_wmap *map;
     int segFaultFound = 0;
 
-    cprintf("Trap handler - PID: %d\n", p->pid);
+    //cprintf("Trap handler - PID: %d\n", p->pid);
 
     // if page fault addr is part of a mapping: // lazy allocation
     // handle it
     int indexOfFault = 0;
     for (indexOfFault = 0; indexOfFault < 16; indexOfFault++) {
-      cprintf("Index in trap handler: %d\n", indexOfFault);
+      //cprintf("Index in trap handler: %d\n", indexOfFault);
       map = &p->maps[indexOfFault];
 
       // Check if the faulting address lies within the current mapping's range
@@ -106,43 +106,43 @@ trap(struct trapframe *tf)
         break;
       }
     }
-    cprintf("Index of fault addr found: %d\n", indexOfFault);
+    //cprintf("Index of fault addr found: %d\n", indexOfFault);
     if (indexOfFault < 16) {
-      cprintf("Go into lazy handler\n");
+      //cprintf("Go into lazy handler\n");
       // Allocate a new physical page
       char *mem = kalloc();
       memset(mem, 0, PGSIZE);
 
       // Calculate the start of the page for mapping
       uint start_of_page = PGROUNDDOWN(address_of_fault);
-      cprintf("Page start calculated\n");
+      //cprintf("Page start calculated\n");
 
       // Handle file-backed mappings for MAP_SHARED
       if (map->file && (map->flags & MAP_SHARED)) {
         uint file_offset = start_of_page - map->addr; // Calculate file offset
-        cprintf("Filed offset calculated\n");
+        //cprintf("Filed offset calculated\n");
 
         // Read file data into the newly allocated page
         int bytes_read = readi(map->file->ip, mem, file_offset, PGSIZE);
-        cprintf("Bytes read\n");
+        //cprintf("Bytes read\n");
         if (bytes_read < 0) {
           kfree(mem); // Free allocated memory on failure
           panic("trap: file read failed\n");
         }
-        cprintf("trap: file read succeeded\n");
+        //cprintf("trap: file read succeeded\n");
       }
 
       // Map the allocated page into the process's page table
       p->pgdir = 0;
-      cprintf("Mappages result: %d", mappages(p->pgdir, (void *)start_of_page, PGSIZE, V2P(mem), PTE_W | PTE_U));
+      //cprintf("Mappages result: %d", mappages(p->pgdir, (void *)start_of_page, PGSIZE, V2P(mem), PTE_W | PTE_U));
       if (mappages(p->pgdir, (void *)start_of_page, PGSIZE, V2P(mem), PTE_W | PTE_U) < 0) {
         kfree(mem); // Free allocated memory on failure
         panic("trap: page mapping failed\n");
       }
       else{
-        cprintf("trap: page mapping succeded\n");
+        //cprintf("trap: page mapping succeded\n");
         acquire(&CopyWriteLock);
-        cprintf("CopyWriteLock acquired in trap handler\n");
+        //cprintf("CopyWriteLock acquired in trap handler\n");
         uint mem_index = V2P(mem)/PGSIZE;
         if (references[mem_index] != 0){
           references[mem_index] = references[mem_index] + 1;
@@ -150,37 +150,37 @@ trap(struct trapframe *tf)
         else{
           references[mem_index] = 1;
         }
-        cprintf("References decremented\n");
+        //cprintf("References decremented\n");
         release(&CopyWriteLock);
-        cprintf("Lock released\n");
+        //cprintf("Lock released\n");
       }
     }
     else {
-      cprintf("Past 15, 16 or above, non-lazy\n");
+      //cprintf("Past 15, 16 or above, non-lazy\n");
       pte_t *pte;
       pte = walkpgdir(p->pgdir, (void *)PGROUNDDOWN(address_of_fault), 0);
       uint flags = PTE_FLAGS(*pte);
-      cprintf("Check if user, present (always there) and then cow\n");
+      //cprintf("Check if user, present (always there) and then cow\n");
       if((flags & PTE_U) && (flags & PTE_P) && (flags & PTE_COW)){
-        cprintf("Try allocation\n");
+        //cprintf("Try allocation\n");
         char *mem = kalloc();
         if(mem == 0) {
           p->killed = 1;
           break;
         }
-        cprintf("Alloc succeeded\n");
+        //cprintf("Alloc succeeded\n");
         uint pa = PTE_ADDR((*pte));
-        cprintf("Write to address\n");
+        //cprintf("Write to address\n");
         memmove(mem, (char *)P2V(pa), PGSIZE);
         *pte = 0;
-        cprintf("Check if paged\n");
+        //cprintf("Check if paged\n");
         if(mappages(p->pgdir, (char*)PGROUNDDOWN(address_of_fault), PGSIZE, V2P(mem), PTE_W|PTE_U) >= 0) {
           acquire(&CopyWriteLock);
-          cprintf("Lock in trap handler past 16 acquired\n");
+          //cprintf("Lock in trap handler past 16 acquired\n");
           references[pa / PGSIZE] --;
           references[V2P(mem) / PGSIZE] = 1;
           release(&CopyWriteLock);
-          cprintf("Lock in trap handler past 16 released\n");
+          //cprintf("Lock in trap handler past 16 released\n");
           segFaultFound = 1;
 
         } else{
@@ -189,9 +189,9 @@ trap(struct trapframe *tf)
         }
       }
       else{
-        cprintf("This means that it either wasn't present, useable, or COW\n");
+        //cprintf("This means that it either wasn't present, useable, or COW\n");
         cprintf("Segmentation Fault\n");
-        cprintf("Within the Else Statement\n");
+        //cprintf("Within the Else Statement\n");
         p->killed = 1;
       }
     }
@@ -199,7 +199,7 @@ trap(struct trapframe *tf)
       
     if(segFaultFound == 0) {
       cprintf("Segmentation Fault\n");
-      cprintf("Without the Else statement\n");
+      //cprintf("Without the Else statement\n");
       // kill the process
       p->killed = 1;
     }
