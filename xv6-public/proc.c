@@ -32,6 +32,8 @@ static struct proc *initproc;
 int nextpid = 1;
 extern void forkret(void);
 extern void trapret(void);
+extern struct spinlock CopyWriteLock;
+extern uchar references[PHYSTOP/PGSIZE];
 
 static void wakeup1(void *chan);
 
@@ -305,12 +307,12 @@ exit(void)
   struct proc *p;
   int fd;
 
-  if(curproc == initproc)
+  if (curproc == initproc)
     panic("init exiting");
 
   // Close all open files.
-  for(fd = 0; fd < NOFILE; fd++){
-    if(curproc->ofile[fd]){
+  for (fd = 0; fd < NOFILE; fd++) {
+    if (curproc->ofile[fd]) {
       fileclose(curproc->ofile[fd]);
       curproc->ofile[fd] = 0;
     }
@@ -321,7 +323,7 @@ exit(void)
   end_op();
   curproc->cwd = 0;
 
-  // Invalidate all memory mappings in the process's `wmaps` array
+  // Invalidate all memory mappings in the process's `maps` array
   for (int i = 0; i < 16; i++) {
     struct map_wmap *map = &curproc->maps[i];
 
@@ -332,14 +334,24 @@ exit(void)
 
     // Invalidate PTEs for the mapping's address range
     for (uint addr = map->addr; addr < map->addr + map->length; addr += PGSIZE) {
-      pde_t *curpgdir = curproc->pgdir;
-      pte_t *pte = walkpgdir(curpgdir, (void *)addr, 0);
-      if (pte && (*pte & PTE_P)) {
-        *pte = *pte & ~PTE_P;  // Clear the PTE to invalidate the mapping
+      pte_t *pte = walkpgdir(curproc->pgdir, (void *)addr, 0);
+
+      if (pte && (*pte & PTE_P)) { // Only process valid and present entries
+        acquire(&CopyWriteLock);
+
+        uint pa = PTE_ADDR(*pte); // Get physical address
+        references[pa / PGSIZE]--; // Decrement reference count
+
+        if (references[pa / PGSIZE] == 0) {
+          kfree((char *)P2V(pa)); // Free physical memory if no references remain
+        }
+
+        *pte = 0; // Clear the PTE to invalidate the mapping
+        release(&CopyWriteLock);
       }
     }
 
-    // Reset the mapping in `wmaps`
+    // Reset the mapping in `maps`
     map->addr = 0;
     map->length = 0;
     map->flags = 0;
@@ -352,12 +364,11 @@ exit(void)
   // Parent might be sleeping in wait().
   wakeup1(curproc->parent);
 
-
   // Pass abandoned children to init.
-  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-    if(p->parent == curproc){
+  for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
+    if (p->parent == curproc) {
       p->parent = initproc;
-      if(p->state == ZOMBIE)
+      if (p->state == ZOMBIE)
         wakeup1(initproc);
     }
   }
@@ -366,7 +377,6 @@ exit(void)
   curproc->state = ZOMBIE;
   sched();
   panic("zombie exit");
-
 }
 
 // Wait for a child process to exit and return its pid.
