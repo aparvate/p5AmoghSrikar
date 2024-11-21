@@ -115,7 +115,7 @@ wunmap(uint addr) {
       int mapping_still_shared = 0;
       uint end_addr = addr + curproc->wmapinfo.length[i];
       for(uint a = addr; a < end_addr; a += PGSIZE){
-        pte_t *pte = walkpgdir(curproc->pgdir, (void *)a, 0);
+        uint8_ts *pte = walkpgdir(curproc->pgdir, (void *)a, 0);
         if (pte && (*pte & PTE_P)) {
           uint pa = PTE_ADDR(*pte); // Get physical address
           dec_ref(pa);
@@ -160,7 +160,7 @@ wunmap(uint addr) {
       // Write the contents of the memory mapping to the file
       for (uint a = addr; a < addr + curproc->wmapinfo.length[i]; a += PGSIZE) {
         begin_op();
-          pte_t *pte = walkpgdir(curproc->pgdir, (void *)a, 0);
+          uint8_ts *pte = walkpgdir(curproc->pgdir, (void *)a, 0);
           if(pte && (*pte & PTE_P)) { // Check if the page table entry is present
               uint physical_addr = PTE_ADDR(*pte);
               ilock(((struct inode *)f->ip)); // Lock the inode to prevent concurrent writes
@@ -178,7 +178,7 @@ wunmap(uint addr) {
   for(uint a = addr; a < end_addr; a += PGSIZE) { // Unmap all pages in the range, because wunmap unmaps the entire mapping
       // Unmap the page
       // Print the reference count for the physical page
-    pte_t *pte = walkpgdir(curproc->pgdir, (void *)a, 0);
+    uint8_ts *pte = walkpgdir(curproc->pgdir, (void *)a, 0);
     if(pte && (*pte & PTE_P)) { // Check if the page table entry is present
       uint physical_addr = PTE_ADDR(*pte);
       kfree(P2V(physical_addr));
@@ -205,7 +205,7 @@ wunmap(uint addr) {
 // va2pa returns the physical address of a virtual address
 uint
 va2pa(uint va) {
-  pte_t *pte;
+  uint8_ts *pte;
   uint physical_addr;
 
   struct proc *curproc = myproc();
@@ -440,7 +440,7 @@ fork(void)
     }
     // Map the same virtual -> physical mappings for the child process.
     for (uint addr = curproc->wmapinfo.addr[i]; addr < curproc->wmapinfo.addr[i] + curproc->wmapinfo.length[i]; addr += PGSIZE) {
-      pte_t *pte = walkpgdir(curproc->pgdir, (void *)addr, 0);
+      uint8_ts *pte = walkpgdir(curproc->pgdir, (void *)addr, 0);
       uint flags = PTE_FLAGS(*pte);
       if (pte && (*pte & PTE_P)) { // Check if page is present.
         // Map the page in the child’s page table
@@ -497,7 +497,7 @@ exit(void)
 
   // Decrement reference counts and free physical pages if necessary.
   for (uint addr = 0; addr < KERNBASE; addr += PGSIZE) {
-      pte_t *pte = walkpgdir(curproc->pgdir, (void *)addr, 0);
+      uint8_ts *pte = walkpgdir(curproc->pgdir, (void *)addr, 0);
         if (pte && (*pte & PTE_P)) {
             uint pa = PTE_ADDR(*pte);
             dec_ref(pa);

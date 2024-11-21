@@ -39,7 +39,7 @@ idtinit(void)
 //   char *mem;
 //   struct proc *p = myproc();
 //   int page_addr = PGROUNDDOWN(fault_addr); // Align fault address to page boundary
-//   pte_t *pte = walkpgdir(p->pgdir, (void *)page_addr, 0); // Get the PTE
+//   uint8_ts *pte = walkpgdir(p->pgdir, (void *)page_addr, 0); // Get the PTE
 //   if(!pte || !(*pte & PTE_P)) {
 //     cprintf("usertrap: invalid access, killing process\n");
 //     p->killed = 1;
@@ -74,7 +74,7 @@ lazy_allocate_mapping(uint fault_addr) {
   uint page_addr = PGROUNDDOWN(fault_addr); // Page-aligned address
 
   // check if reference count is 1, if so, we can write to the page
-  //pte_t *pte = walkpgdir(curproc->pgdir, (void *)page_addr, 0);
+  //uint8_ts *pte = walkpgdir(curproc->pgdir, (void *)page_addr, 0);
 
   // Validate the fault address
   if ((((fault_addr) % PGSIZE == 0) && ((fault_addr) >= KERNSTART) && ((fault_addr) < KERNBASE))) {
@@ -144,7 +144,7 @@ lazy_allocate_mapping(uint fault_addr) {
     }
   }else{
     // Get the POTENTIAL COW FLAGGED page table entry for the fault address for COW handling
-    pte_t *pte = walkpgdir(curproc->pgdir, (void *)page_addr, 0);
+    uint8_ts *pte = walkpgdir(curproc->pgdir, (void *)page_addr, 0);
     uint physical_addr = PTE_ADDR(*pte); // Get the physical address of the page
     if (pte && (*pte & PTE_P) && (*pte & PTE_U)) { // Check if the page table entry is present
       // NOTE: PTE_COW implies PTE_P (refer to guard in cowuvm in vm.c)

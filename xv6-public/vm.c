@@ -32,17 +32,17 @@ seginit(void)
 // Return the address of the PTE in page table pgdir
 // that corresponds to virtual address va.  If alloc!=0,
 // create any required page table pages.
-pte_t *
+uint8_ts *
 walkpgdir(pde_t *pgdir, const void *va, int alloc)
 {
   pde_t *pde;
-  pte_t *pgtab;
+  uint8_ts *pgtab;
 
   pde = &pgdir[PDX(va)];
   if(*pde & PTE_P){
-    pgtab = (pte_t*)P2V(PTE_ADDR(*pde));
+    pgtab = (uint8_ts*)P2V(PTE_ADDR(*pde));
   } else {
-    if(!alloc || (pgtab = (pte_t*)kalloc()) == 0)
+    if(!alloc || (pgtab = (uint8_ts*)kalloc()) == 0)
       return 0;
     // Make sure all those PTE_P bits are zero.
     memset(pgtab, 0, PGSIZE);
@@ -61,7 +61,7 @@ int
 mappages(pde_t *pgdir, void *va, uint size, uint pa, int perm)
 {
   char *a, *last;
-  pte_t *pte;
+  uint8_ts *pte;
 
   a = (char*)PGROUNDDOWN((uint)va);
   last = (char*)PGROUNDDOWN(((uint)va) + size - 1);
@@ -198,7 +198,7 @@ int
 loaduvm(pde_t *pgdir, char *addr, struct inode *ip, uint offset, uint sz, uint flags)
 {
   uint i, pa, n;
-  pte_t *pte;
+  uint8_ts *pte;
   uint perm;
 
   if((uint) addr % PGSIZE != 0)
@@ -265,7 +265,7 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
 int
 deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
 {
-  pte_t *pte;
+  uint8_ts *pte;
   uint a, pa;
 
   if(newsz >= oldsz)
@@ -315,7 +315,7 @@ freevm(pde_t *pgdir)
 void
 clearpteu(pde_t *pgdir, char *uva)
 {
-  pte_t *pte;
+  uint8_ts *pte;
 
   pte = walkpgdir(pgdir, uva, 0);
   if(pte == 0)
@@ -329,7 +329,7 @@ clearpteu(pde_t *pgdir, char *uva)
 // copyuvm(pde_t *pgdir, uint sz)
 // {
 //   pde_t *d;
-//   pte_t *pte;
+//   uint8_ts *pte;
 //   uint pa, i, flags;
 //   char *mem;
 
@@ -361,7 +361,7 @@ pde_t*
 copyuvm(pde_t *pgdir, uint sz)
 {
   pde_t *d;
-  pte_t *pte;
+  uint8_ts *pte;
   uint pa, i, flags;
   //char *mem;
 
@@ -409,7 +409,7 @@ bad:
 char*
 uva2ka(pde_t *pgdir, char *uva)
 {
-  pte_t *pte;
+  uint8_ts *pte;
 
   pte = walkpgdir(pgdir, uva, 0);
   if((*pte & PTE_P) == 0)
