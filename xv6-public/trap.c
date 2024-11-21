@@ -94,18 +94,18 @@ trap(struct trapframe *tf)
 
     // if page fault addr is part of a mapping: // lazy allocation
     // handle it
-    for (int i = 0; i < 16; i++) {
-      cprintf("Index in trap handler: %d\n", i);
-      map = &p->maps[i];
+    int indexOfFault = 0;
+    for (indexOfFault = 0; indexOfFault < 16; indexOfFault++) {
+      cprintf("Index in trap handler: %d\n", indexOfFault);
+      map = &p->maps[indexOfFault];
 
       // Check if the faulting address lies within the current mapping's range
       if (address_of_fault >= map->addr && address_of_fault < (map->addr + map->length)) {
         segFaultFound = 1;
-        indexOfFault = i;
-        cprintf("Index of fault addr found: %d\n", i);
         break;
       }
     }
+    cprintf("Index of fault addr found: %d\n", indexOfFault);
     if (indexOfFault < 16) {
       cprintf("Go into lazy handler\n");
       // Allocate a new physical page
@@ -132,7 +132,7 @@ trap(struct trapframe *tf)
       }
 
       // Map the allocated page into the process's page table
-      p->pgdir &= ~PTE_P;
+      p->pgdir = 0;
       cprintf("Mappages result: %d", mappages(p->pgdir, (void *)start_of_page, PGSIZE, V2P(mem), PTE_W | PTE_U));
       if (mappages(p->pgdir, (void *)start_of_page, PGSIZE, V2P(mem), PTE_W | PTE_U) < 0) {
         kfree(mem); // Free allocated memory on failure
