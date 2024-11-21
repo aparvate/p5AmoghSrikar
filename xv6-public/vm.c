@@ -363,6 +363,7 @@ copyuvm(pde_t *pgdir, uint sz)
     if((mem = kalloc()) == 0)
       goto bad;
 
+    cprintf("Value of pid before copy: %d\n", myproc()->pid);
     cprintf("Value of flags is: 0x%x\n", flags);
     flags |= PTE_P;
     flags |= PTE_U;
