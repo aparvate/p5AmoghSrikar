@@ -181,3 +181,18 @@ trap(struct trapframe *tf)
   if(myproc() && myproc()->killed && (tf->cs&3) == DPL_USER)
     exit();
 }
+
+int
+find_mapping_trap(uint trap_addr){
+ int i;
+ struct proc *p = myproc();
+  // Find the mapping that contains this fault
+ // add PGROUNDUP because we will always allocate entire page even when length is not a multiple of page size
+ for(i = 0; i < 16; i++) {
+   if((p->maps[i].flags & PTE_P) &&
+       trap_addr >= p->maps[i].addr &&
+       trap_addr < p->maps[i].addr + PGROUNDUP(p->maps[i].length))
+    break;
+ }
+ return i;
+}
