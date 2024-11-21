@@ -255,7 +255,7 @@ exit(void)
     map = &curproc->maps[i];
     // If no matching mapping is found, return failure
     if (map == NULL) {
-      return FAILED;
+      return;
     }
     // Free allocated pages
     for (uint a = map->addr; a < map->addr + map->length; a += PGSIZE) {
