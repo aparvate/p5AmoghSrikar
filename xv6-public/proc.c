@@ -112,118 +112,116 @@ wmap(uint start_addr, int size, int map_flags, int file_desc) {
 
 // wunmap system call unmaps a virtual address
 int
-wunmap(uint addr) {
-  struct proc *curproc = myproc();
+wunmap(uint start_addr) {
+    struct proc *current_proc = myproc();
 
-  for(int i = 0; i <MAX_WMMAP_INFO; i++){
     // Validate address alignment and range
-    if ((((addr) % PGSIZE == 0) && ((addr) >= KERNSTART) && ((addr) < KERNBASE))){
-      int mapping_still_shared = 0;
-      uint end_addr = addr + curproc->wmapinfo.length[i];
-      for(uint a = addr; a < end_addr; a += PGSIZE){
-        uint8_ts *pte = walkpgdir(curproc->pgdir, (void *)a, 0);
-        if (pte && (*pte & PTE_P)) {
-          uint pa = PTE_ADDR(*pte); // Get physical address
-          dec_ref(pa);
-          if (get_ref(pa) > -1) {
-            mapping_still_shared = 1; // Mapping is still shared
-            *pte = 0;
-          }
+    if (start_addr % PGSIZE != 0 || start_addr < KERNSTART || start_addr >= KERNBASE) {
+        return FAILED;
+    }
+
+    int map_index = -1;
+
+    // Locate the mapping associated with the given address
+    for (int i = 0; i < current_proc->wmapinfo.total_mmaps; i++) {
+        if (current_proc->wmapinfo.addr[i] == start_addr) {
+            map_index = i;
+            break;
         }
-      }
-      if (mapping_still_shared) {
-        curproc->wmapinfo.total_mmaps--;
+    }
+
+    // If no mapping is found, return failure
+    if (map_index == -1) {
+        return FAILED;
+    }
+
+    uint mapping_end = start_addr + current_proc->wmapinfo.length[map_index];
+
+    // Handle shared mappings by decrementing reference counts
+    int mapping_shared = 0;
+    for (uint page = start_addr; page < mapping_end; page += PGSIZE) {
+        uint *pte = walkpgdir(current_proc->pgdir, (void *)page, 0);
+        if (pte && (*pte & PTE_P)) {
+            uint phys_addr = PTE_ADDR(*pte);
+            dec_ref(phys_addr);
+
+            if (get_ref(phys_addr) > 0) {
+                mapping_shared = 1; // The page is still shared
+                *pte = 0;          // Unmap this page
+            }
+        }
+    }
+
+    // If the mapping is still shared, skip unmap
+    if (mapping_shared) {
         cprintf("wunmap: mapping is still shared, skipping unmap\n");
         return 0;
-      }
     }
-    
 
-  }
+    // Handle file-backed mappings
+    if (current_proc->wmapinfo.fd[map_index] >= 0 && 
+        !(current_proc->wmapinfo.flags[map_index] & MAP_ANONYMOUS)) {
+        struct file *file_ptr = current_proc->ofile[current_proc->wmapinfo.fd[map_index]];
+        uint file_offset = 0;
 
-  //Find the mapping to unmap
-  int i;
-  for(i = 0; i < curproc->wmapinfo.total_mmaps; i++) {
-
-      if(curproc->wmapinfo.addr[i] == addr){
-        break;
-      }
-          
-  }
-
-  // Mapping not found
-  if(i == curproc->wmapinfo.total_mmaps)
-      return FAILED;
-
-  // Check if the mapping is file-backed
-  if(curproc->wmapinfo.fd[i] >= 0 && !(curproc->wmapinfo.flags[i] & MAP_ANONYMOUS)) {
-      // Write the file back to disk (no need to check if data has been modified/is dirty)
-      struct file *f = curproc->ofile[curproc->wmapinfo.fd[i]];
-      // NOTE: We assume that the file is already open, because the file descriptor is valid
-      // We also assume the file is of type INODE, as stated in the writeup      
-      // Write the contents of the memory mapping to the file
-      for (uint a = addr; a < addr + curproc->wmapinfo.length[i]; a += PGSIZE) {
-        begin_op();
-          uint8_ts *pte = walkpgdir(curproc->pgdir, (void *)a, 0);
-          if(pte && (*pte & PTE_P)) { // Check if the page table entry is present
-              uint physical_addr = PTE_ADDR(*pte);
-              ilock(((struct inode *)f->ip)); // Lock the inode to prevent concurrent writes
-              writei(((struct inode *)f->ip), P2V(physical_addr), a - addr, PGSIZE);
-              iunlock(((struct inode *)f->ip)); // Unlock the inode
-              // NOTE: No need to add offset to page_addr - start, as we assume offset is 0
-          }
-          end_op();
-      }
-      // NOTE: Recall, we are not responsible for closing the file, because the file descriptor is still open
-  }
-
-  uint end_addr = addr + curproc->wmapinfo.length[i];
-  // Unmap the pages
-  for(uint a = addr; a < end_addr; a += PGSIZE) { // Unmap all pages in the range, because wunmap unmaps the entire mapping
-      // Unmap the page
-      // Print the reference count for the physical page
-    uint8_ts *pte = walkpgdir(curproc->pgdir, (void *)a, 0);
-    if(pte && (*pte & PTE_P)) { // Check if the page table entry is present
-      uint physical_addr = PTE_ADDR(*pte);
-      kfree(P2V(physical_addr));
-      *pte = 0;
+        for (uint page = start_addr; page < mapping_end; page += PGSIZE, file_offset += PGSIZE) {
+            uint *pte = walkpgdir(current_proc->pgdir, (void *)page, 0);
+            if (pte && (*pte & PTE_P)) {
+                uint phys_addr = PTE_ADDR(*pte);
+                begin_op();
+                ilock(file_ptr->ip);
+                writei(file_ptr->ip, P2V(phys_addr), file_offset, PGSIZE);
+                iunlock(file_ptr->ip);
+                end_op();
+            }
+        }
     }
-  }
 
-  // Remove the mapping
-  for(; i < curproc->wmapinfo.total_mmaps - 1; i++) {
-      curproc->wmapinfo.addr[i] = curproc->wmapinfo.addr[i + 1];
-      curproc->wmapinfo.length[i] = curproc->wmapinfo.length[i + 1];
-      curproc->wmapinfo.n_loaded_pages[i] = curproc->wmapinfo.n_loaded_pages[i + 1];
+    // Unmap all pages in the range and free physical memory
+    for (uint page = start_addr; page < mapping_end; page += PGSIZE) {
+        uint *pte = walkpgdir(current_proc->pgdir, (void *)page, 0);
+        if (pte && (*pte & PTE_P)) {
+            uint phys_addr = PTE_ADDR(*pte);
+            kfree(P2V(phys_addr)); // Free the memory
+            *pte = 0;              // Clear the PTE
+        }
+    }
 
-      // Remove the mapping from the file info list
-      curproc->wmapinfo.fd[i] = curproc->wmapinfo.fd[i + 1];
-      curproc->wmapinfo.flags[i] = curproc->wmapinfo.flags[i + 1];
-  }
+    // Remove the mapping from the process's mmap list
+    for (int i = map_index; i < current_proc->wmapinfo.total_mmaps - 1; i++) {
+        current_proc->wmapinfo.addr[i] = current_proc->wmapinfo.addr[i + 1];
+        current_proc->wmapinfo.length[i] = current_proc->wmapinfo.length[i + 1];
+        current_proc->wmapinfo.n_loaded_pages[i] = current_proc->wmapinfo.n_loaded_pages[i + 1];
+        current_proc->wmapinfo.fd[i] = current_proc->wmapinfo.fd[i + 1];
+        current_proc->wmapinfo.flags[i] = current_proc->wmapinfo.flags[i + 1];
+    }
 
-  curproc->wmapinfo.total_mmaps--;
+    // Update the total number of mappings
+    current_proc->wmapinfo.total_mmaps--;
 
-  return SUCCESS;
+    return SUCCESS;
 }
+
 
 // va2pa returns the physical address of a virtual address
 uint
-va2pa(uint va) {
-  uint8_ts *pte;
-  uint physical_addr;
+va2pa(uint virtual_address) {
+    struct proc *current_process = myproc();
+    if (!current_process) {
+        return FAILED;
+    }
 
-  struct proc *curproc = myproc();
+    // Walk the page directory to find the page table entry for the given address
+    uint *page_table_entry = walkpgdir(current_process->pgdir, (void *)virtual_address, 0);
+    if (!page_table_entry || !(*page_table_entry & PTE_P)) {
+        return FAILED; // Page table entry is invalid or page is not present
+    }
 
-  // Get the page table entry for the virtual address
-  pte = walkpgdir(curproc->pgdir, (void *)va, 0);
-  if(!pte || !(*pte & PTE_P)) {
-    return FAILED;
-  }
-
-  // Get the physical address from the page table entry
-  physical_addr = PTE_ADDR(*pte) + (va & 0xFFF); // TODO: Check alternative version of this calculation
-  return physical_addr;
+    // Combine the base physical address and the offset within the page
+    uint physical_address = PTE_ADDR(*page_table_entry) | (virtual_address & 0xFFF);
+    return physical_address;
 }
+
 
 // getwmapinfo system call returns the wmapinfo struct for the current process
 int
