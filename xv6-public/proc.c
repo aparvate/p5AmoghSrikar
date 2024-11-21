@@ -117,7 +117,7 @@ wunmap(uint address) {
     int mapping_index = -1;
 
     // Validate the address
-    if (!IS_VALID_WMAP_ADDR(address)) {
+    if (!((((address) % PGSIZE == 0) && ((address) >= KERNSTART) && ((address) < KERNBASE)))) {
         return FAILED;
     }
 
@@ -135,13 +135,13 @@ wunmap(uint address) {
     }
 
     // Handle file-backed mappings (MAP_SHARED and not MAP_ANONYMOUS)
-    if (current_proc->wmap_file_info.fd[mapping_index] >= 0 &&
-        !(current_proc->wmap_file_info.flags[mapping_index] & MAP_ANONYMOUS)) {
-        struct file *file_to_sync = current_proc->ofile[current_proc->wmap_file_info.fd[mapping_index]];
+    if (current_proc->wmapinfo.fd[mapping_index] >= 0 &&
+        !(current_proc->wmapinfo.flags[mapping_index] & MAP_ANONYMOUS)) {
+        struct file *file_to_sync = current_proc->ofile[current_proc->wmapinfo.fd[mapping_index]];
         uint map_end = address + current_proc->wmapinfo.length[mapping_index];
 
         for (uint addr = address; addr < map_end; addr += PGSIZE) {
-            pte_t *page_table_entry = walkpgdir(current_proc->pgdir, (void *)addr, 0);
+            uint8_ts *page_table_entry = walkpgdir(current_proc->pgdir, (void *)addr, 0);
             if (page_table_entry && (*page_table_entry & PTE_P)) {
                 uint physical_addr = PTE_ADDR(*page_table_entry);
                 char *data_to_write = P2V(physical_addr);
@@ -159,7 +159,7 @@ wunmap(uint address) {
     uint map_start = address;
     uint map_end = map_start + current_proc->wmapinfo.length[mapping_index];
     for (uint addr = map_start; addr < map_end; addr += PGSIZE) {
-        pte_t *page_table_entry = walkpgdir(current_proc->pgdir, (void *)addr, 0);
+        uint8_ts *page_table_entry = walkpgdir(current_proc->pgdir, (void *)addr, 0);
         if (page_table_entry && (*page_table_entry & PTE_P)) {
             uint physical_addr = PTE_ADDR(*page_table_entry);
             kfree(P2V(physical_addr)); // Free the physical memory
@@ -172,8 +172,8 @@ wunmap(uint address) {
         current_proc->wmapinfo.addr[i] = current_proc->wmapinfo.addr[i + 1];
         current_proc->wmapinfo.length[i] = current_proc->wmapinfo.length[i + 1];
         current_proc->wmapinfo.n_loaded_pages[i] = current_proc->wmapinfo.n_loaded_pages[i + 1];
-        current_proc->wmap_file_info.fd[i] = current_proc->wmap_file_info.fd[i + 1];
-        current_proc->wmap_file_info.flags[i] = current_proc->wmap_file_info.flags[i + 1];
+        current_proc->wmapinfo.fd[i] = current_proc->wmapinfo.fd[i + 1];
+        current_proc->wmapinfo.flags[i] = current_proc->wmapinfo.flags[i + 1];
     }
 
     // Reduce the total mappings count
