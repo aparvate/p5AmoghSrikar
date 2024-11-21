@@ -288,12 +288,12 @@ exit(void)
   struct proc *p;
   int fd;
 
-  if (curproc == initproc)
+  if(curproc == initproc)
     panic("init exiting");
 
   // Close all open files.
-  for (fd = 0; fd < NOFILE; fd++) {
-    if (curproc->ofile[fd]) {
+  for(fd = 0; fd < NOFILE; fd++){
+    if(curproc->ofile[fd]){
       fileclose(curproc->ofile[fd]);
       curproc->ofile[fd] = 0;
     }
@@ -313,12 +313,10 @@ exit(void)
       continue;
     }
 
-    uint startAddr = map->addr;
-    uint endAddr = startAddr + map->length;
-
     // Invalidate PTEs for the mapping's address range
-    for (uint addr = startAddr; addr < endAddr; addr += PGSIZE) {
-      pte_t *pte = walkpgdir(curproc->pgdir, (void *)addr, 0);
+    for (uint addr = map->addr; addr < map->addr + map->length; addr += PGSIZE) {
+      pde_t curpgdir = curproc->pgdir;
+      pte_t *pte = walkpgdir(curpgdir, (void *)addr, 0);
       if (pte && (*pte & PTE_P)) {
         *pte = *pte & ~PTE_P;  // Clear the PTE to invalidate the mapping
       }
@@ -337,11 +335,12 @@ exit(void)
   // Parent might be sleeping in wait().
   wakeup1(curproc->parent);
 
+
   // Pass abandoned children to init.
-  for (p = ptable.proc; p < &ptable.proc[NPROC]; p++) {
-    if (p->parent == curproc) {
+  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
+    if(p->parent == curproc){
       p->parent = initproc;
-      if (p->state == ZOMBIE)
+      if(p->state == ZOMBIE)
         wakeup1(initproc);
     }
   }
@@ -350,6 +349,7 @@ exit(void)
   curproc->state = ZOMBIE;
   sched();
   panic("zombie exit");
+
 }
 
 // Wait for a child process to exit and return its pid.
