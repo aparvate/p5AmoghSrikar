@@ -7,9 +7,6 @@
 #define FAILED -1
 #define SUCCESS 0
 
-// KERNSTART
-#define KERNSTART 0x60000000
-
 // for `getwmapinfo`
 #define MAX_WMMAP_INFO 16
 struct wmapinfo {
@@ -18,3 +15,10 @@ struct wmapinfo {
     int length[MAX_WMMAP_INFO];         // Size of mapping
     int n_loaded_pages[MAX_WMMAP_INFO]; // Number of pages physically loaded into memory
 };
+
+// Additional struct to store file descriptor and flags for each mapping
+struct wmap_file_info {
+    int fd[MAX_WMMAP_INFO];             // File descriptor for file-backed mappings
+    int flags[MAX_WMMAP_INFO];          // Flags for each mapping
+};
+
