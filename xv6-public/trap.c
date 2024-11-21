@@ -132,7 +132,7 @@ trap(struct trapframe *tf)
       }
 
       // Map the allocated page into the process's page table
-      p->pgdir = 0;
+      p->pgdir &= ~PTE_P;
       cprintf("Mappages result: %d", mappages(p->pgdir, (void *)start_of_page, PGSIZE, V2P(mem), PTE_W | PTE_U));
       if (mappages(p->pgdir, (void *)start_of_page, PGSIZE, V2P(mem), PTE_W | PTE_U) < 0) {
         kfree(mem); // Free allocated memory on failure

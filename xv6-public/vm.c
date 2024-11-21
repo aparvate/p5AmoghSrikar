@@ -367,7 +367,7 @@ copyuvm(pde_t *pgdir, uint sz)
       flags |= PTE_COW;
       flags &= ~PTE_W;
     }
-    *pte &= ~PTE_P;
+    *pte = 0;
     if(mappages(pgdir, (void*)i, PGSIZE, pa, flags) < 0) {
       goto bad;
     }
