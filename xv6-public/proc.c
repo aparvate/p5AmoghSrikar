@@ -110,6 +110,37 @@ wmap(uint start_addr, int size, int map_flags, int file_desc) {
     return start_addr; // Return the starting address of the mapping
 }
 
+// Helper to write back file-backed mapping
+void write_back_mapping(struct proc *curproc, uint addr, int mapping_index) {
+    struct file *file = curproc->ofile[curproc->wmapinfo.fd[mapping_index]];
+    uint start_addr = addr;
+    uint length = curproc->wmapinfo.length[mapping_index];
+
+    for (uint a = start_addr; a < start_addr + length; a += PGSIZE) {
+        begin_op();
+        uint *pte = walkpgdir(curproc->pgdir, (void *)a, 0);
+        if (pte && (*pte & PTE_P)) { // Check if the page table entry is present
+            uint pa = PTE_ADDR(*pte); // Get physical address
+            ilock((struct inode *)file->ip); // Lock the inode
+            writei((struct inode *)file->ip, P2V(pa), a - start_addr, PGSIZE);
+            iunlock((struct inode *)file->ip); // Unlock the inode
+        }
+        end_op();
+    }
+}
+
+// Helper to unmap pages
+void unmap_pages(struct proc *curproc, uint start_addr, uint length) {
+    for (uint a = start_addr; a < start_addr + length; a += PGSIZE) {
+        uint *pte = walkpgdir(curproc->pgdir, (void *)a, 0);
+        if (pte && (*pte & PTE_P)) { // Check if the page table entry is present
+            uint pa = PTE_ADDR(*pte); // Get physical address
+            kfree(P2V(pa));           // Free the physical memory
+            *pte = 0;                 // Clear the PTE
+        }
+    }
+}
+
 // wunmap system call unmaps a virtual address
 // wunmap system call unmaps a virtual address
 int
@@ -119,7 +150,7 @@ wunmap(uint addr) {
   for(int i = 0; i <16; i++){
     // Validate address alignment and range
     if ((((addr) % PGSIZE == 0) && ((addr) >= KERNSTART) && ((addr) < KERNBASE))){
-      int sharedMap = 0;
+      int sharedMap = -1;
       for(uint a = addr; a < (addr + curproc->wmapinfo.length[i]); a += PGSIZE){
         uint8_ts *pte = walkpgdir(curproc->pgdir, (void *)a, 0);
 
@@ -132,9 +163,8 @@ wunmap(uint addr) {
           }
         }
       }
-      if (sharedMap) {
+      if (sharedMap == 1) {
         curproc->wmapinfo.total_mmaps--;
-        cprintf("wunmap: mapping is still shared, skipping unmap\n");
         return 0;
       }
     }
@@ -145,59 +175,27 @@ wunmap(uint addr) {
   //Find the mapping to unmap
   int i;
   for(i = 0; i < curproc->wmapinfo.total_mmaps; i++) {
-
       if(curproc->wmapinfo.addr[i] == addr){
         break;
       }
-          
   }
 
   // Mapping not found
   if(i == curproc->wmapinfo.total_mmaps)
-      return FAILED;
+    return FAILED;
 
-  // Check if the mapping is file-backed
-  if(curproc->wmapinfo.fd[i] >= 0 && !(curproc->wmapinfo.flags[i] & MAP_ANONYMOUS)) {
-      // Write the file back to disk (no need to check if data has been modified/is dirty)
-      struct file *f = curproc->ofile[curproc->wmapinfo.fd[i]];
-      // NOTE: We assume that the file is already open, because the file descriptor is valid
-      // We also assume the file is of type INODE, as stated in the writeup      
-      // Write the contents of the memory mapping to the file
-      for (uint a = addr; a < addr + curproc->wmapinfo.length[i]; a += PGSIZE) {
-        begin_op();
-          uint8_ts *pte = walkpgdir(curproc->pgdir, (void *)a, 0);
-          if(pte && (*pte & PTE_P)) { // Check if the page table entry is present
-              uint physical_addr = PTE_ADDR(*pte);
-              ilock(((struct inode *)f->ip)); // Lock the inode to prevent concurrent writes
-              writei(((struct inode *)f->ip), P2V(physical_addr), a - addr, PGSIZE);
-              iunlock(((struct inode *)f->ip)); // Unlock the inode
-              // NOTE: No need to add offset to page_addr - start, as we assume offset is 0
-          }
-          end_op();
-      }
-      // NOTE: Recall, we are not responsible for closing the file, because the file descriptor is still open
+    // Main code
+  if (curproc->wmapinfo.fd[i] >= 0 && !(curproc->wmapinfo.flags[i] & MAP_ANONYMOUS)) {
+      write_back_mapping(curproc, addr, i);
   }
 
-  uint end_addr = addr + curproc->wmapinfo.length[i];
-  // Unmap the pages
-  for(uint a = addr; a < end_addr; a += PGSIZE) { // Unmap all pages in the range, because wunmap unmaps the entire mapping
-      // Unmap the page
-      // Print the reference count for the physical page
-    uint8_ts *pte = walkpgdir(curproc->pgdir, (void *)a, 0);
-    if(pte && (*pte & PTE_P)) { // Check if the page table entry is present
-      uint physical_addr = PTE_ADDR(*pte);
-      kfree(P2V(physical_addr));
-      *pte = 0;
-    }
-  }
+  unmap_pages(curproc, addr, curproc->wmapinfo.length[i]);
 
-  // Remove the mapping
-  for(; i < curproc->wmapinfo.total_mmaps - 1; i++) {
+  // Shift mappings
+  for (; i < curproc->wmapinfo.total_mmaps - 1; i++) {
       curproc->wmapinfo.addr[i] = curproc->wmapinfo.addr[i + 1];
       curproc->wmapinfo.length[i] = curproc->wmapinfo.length[i + 1];
       curproc->wmapinfo.n_loaded_pages[i] = curproc->wmapinfo.n_loaded_pages[i + 1];
-
-      // Remove the mapping from the file info list
       curproc->wmapinfo.fd[i] = curproc->wmapinfo.fd[i + 1];
       curproc->wmapinfo.flags[i] = curproc->wmapinfo.flags[i + 1];
   }
@@ -205,6 +203,7 @@ wunmap(uint addr) {
   curproc->wmapinfo.total_mmaps--;
 
   return SUCCESS;
+
 }
 
 // va2pa returns the physical address of a virtual address

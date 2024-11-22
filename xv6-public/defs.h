@@ -65,8 +65,6 @@ extern uchar    ioapicid;
 void            ioapicinit(void);
 
 // kalloc.c
-// void            incrementRef(uint);
-// void            decrementRef(uint);
 void            changeRef(uint, int);
 int             getRef(uint);
 void            setRef(uint);

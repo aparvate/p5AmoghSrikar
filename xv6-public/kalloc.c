@@ -103,18 +103,6 @@ kalloc(void)
   return (char*)r;
 }
 
-// void incrementRef(uint pa) {
-//   acquire(&kmem.lock);
-//   refcount[pa / PGSIZE]++;
-//   release(&kmem.lock);
-// }
-
-// void decrementRef(uint pa) {
-//   acquire(&kmem.lock);
-//   refcount[pa/PGSIZE]--;
-//   release(&kmem.lock);
-// }
-
 void changeRef(uint pa, int posOrNeg) {
   acquire(&kmem.lock);
   if (posOrNeg == 1){
