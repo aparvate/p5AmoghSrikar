@@ -35,111 +35,6 @@ idtinit(void)
   lidt(idt, sizeof(idt));
 }
 
-// Check if the fault address is part of a mapping
-int
-lazy_allocate_mapping(uint fault_addr) {
-  struct proc *curproc = myproc();
-
-  uint page_addr = PGROUNDDOWN(fault_addr); // Page-aligned address
-
-  // check if reference count is 1, if so, we can write to the page
-  //uint8_ts *pte = walkpgdir(curproc->pgdir, (void *)page_addr, 0);
-
-  // Validate the fault address
-  if ((((fault_addr) % PGSIZE == 0) && ((fault_addr) >= KERNSTART) && ((fault_addr) < KERNBASE))) {
-    //return 0;
-  //uint page_addr = PGROUNDDOWN(fault_addr); // Page-aligned address
-  
-
-    // Iterate through the mappings to check if the fault address is part of a mapping
-    // Only allow the process to access the memory that is part of a mapping
-    // Allocate the memory for the mapping if it is not already allocated
-    for(int i = 0; i < curproc->wmapinfo.total_mmaps; i++) {
-        uint start = curproc->wmapinfo.addr[i]; // Start address of the mapping
-        uint end = start + curproc->wmapinfo.length[i]; // End address of the mapping
-        if (fault_addr >= start && fault_addr < end) {
-            // We will also allocate the memory for the mapping if it is not already allocated right here
-            // and then return success, as per lazy allocation
-            
-            char *mem = kalloc(); // Allocate a page of physical memory
-            if (mem == 0) {
-                return FAILED;
-            }
-            memset(mem, 0, PGSIZE); // Zero out the page to prevent information leakage
-
-            // Map the new page with the same permissions as the original page
-            if (mappages(curproc->pgdir, (void *)page_addr, PGSIZE, V2P(mem), PTE_U | PTE_W) < 0) {
-              cprintf("mappages failed\n");
-              kfree(mem);
-              curproc->killed = 1;
-              return FAILED;
-            }
-
-            // Check if the page is file-backed
-            if (curproc->wmapinfo.fd[i] >= 0 && !(curproc->wmapinfo.flags[i] & MAP_ANONYMOUS)) {
-                struct file *f = curproc->ofile[curproc->wmapinfo.fd[i]];
-                // NOTE: We assume that the file is already open, because the file descriptor is valid
-                // We also assume the file is of type INODE, as stated in the writeup
-                
-                if(f){
-                  ilock(((struct inode *)f->ip)); // Lock the inode to prevent concurrent writes
-                  readi(f->ip, (char*)page_addr, page_addr - start, PGSIZE);
-                  iunlock(((struct inode *)f->ip)); // Unlock the inode
-                }
-
-                
-
-                // NOTE: Recall, we are not responsible for closing the file, because the file descriptor is still open
-            }
-
-            // NOTE: Xv6 functions like mappages() already update the PTEs in the page table to set the new physical address
-            // along with the permissions, so we do not need to update the PTEs here. Additionally, we need not consider
-            // the TLB as the page table entries are already updated.
-
-            // Increment number of pages physically loaded into memory
-            curproc->wmapinfo.n_loaded_pages[i]++;
-
-            return SUCCESS; // NOTE: We assume that the mappings are non-overlapping
-        }
-    }
-  }else{
-    // Get the POTENTIAL COW FLAGGED page table entry for the fault address for COW handling
-    uint8_ts *pte = walkpgdir(curproc->pgdir, (void *)page_addr, 0);
-    uint physical_addr = PTE_ADDR(*pte); // Get the physical address of the page
-    if (pte && (*pte & PTE_P) && (*pte & PTE_U)) { // Check if the page table entry is present
-      // NOTE: PTE_COW implies PTE_P (refer to guard in cowuvm in vm.c)
-      cprintf("This is the page table entry %x", *pte);
-      if (!(*pte & PTE_COW) && !(*pte & PTE_W))
-      {
-        cprintf("does it get in here? \n");
-        return FAILED;
-      }
-      if(*pte & PTE_COW){
-        char *mem = kalloc(); // Allocate a page of physical memory
-        if (mem == 0) {
-          cprintf("Getting in cow: return 0 one\n");
-          return FAILED;
-        }
-        memmove(mem, (char*)P2V(physical_addr), PGSIZE); // Copy the contents of the page to the new page
-        int flags = PTE_FLAGS(*pte);
-        flags &= ~PTE_COW;
-        flags |= PTE_W;
-        *pte = V2P(mem) | flags; // Update the PTE to point to the new physical address | TODO: Use mappages() instead?
-        changeRef(physical_addr, 0);
-        setRef(V2P(mem));
-      }
-      else
-      {
-        *pte |= PTE_W;
-      }
-      lcr3(V2P(curproc->pgdir));
-      return SUCCESS;
-    }
-
-  }
-  return FAILED;
-}
-
 //PAGEBREAK: 41
 void
 trap(struct trapframe *tf)
@@ -185,101 +80,112 @@ trap(struct trapframe *tf)
             cpuid(), tf->cs, tf->eip);
     lapiceoi();
     break;
-  case T_PGFLT:
+case T_PGFLT: {
     uint fault_addr = rcr2(); // Get the faulting address
-
     struct proc *curproc = myproc();
-
     uint page_addr = PGROUNDDOWN(fault_addr);
-    int checkVal = 0;
-    if ((((fault_addr) % PGSIZE == 0) && ((fault_addr) >= KERNSTART) && ((fault_addr) < KERNBASE))) {
-      for(int i = 0; i < curproc->wmapinfo.total_mmaps; i++) {
-          uint start = curproc->wmapinfo.addr[i];
-          uint end = start + curproc->wmapinfo.length[i];
-          if (fault_addr >= start && fault_addr < end) {
-              char *mem = kalloc();
-              if (mem == 0) {
-                  checkVal = 1;
-              }
-              memset(mem, 0, PGSIZE);
-              if (mappages(curproc->pgdir, (void *)page_addr, PGSIZE, V2P(mem), PTE_U | PTE_W) < 0) {
-                cprintf("mappages failed\n");
-                kfree(mem);
-                curproc->killed = 1;
-                checkVal = 1;
-              }
-              if (curproc->wmapinfo.fd[i] >= 0 && !(curproc->wmapinfo.flags[i] & MAP_ANONYMOUS)) {
-                  struct file *f = curproc->ofile[curproc->wmapinfo.fd[i]];
-                  if(f){
-                    ilock(((struct inode *)f->ip));
-                    readi(f->ip, (char*)page_addr, page_addr - start, PGSIZE);
-                    iunlock(((struct inode *)f->ip));
-                  }
-              }
-              curproc->wmapinfo.n_loaded_pages[i]++;
-              checkVal = 2;
-          }
-      }
-    }
-    else{
-      uint8_ts *pte = walkpgdir(curproc->pgdir, (void *)page_addr, 0);
-      uint physical_addr = PTE_ADDR(*pte);
-      if (pte && (*pte & PTE_P) && (*pte & PTE_U)) {
-        cprintf("This is the page table entry %x", *pte);
-        if (!(*pte & PTE_COW) && !(*pte & PTE_W))
-        {
-          cprintf("does it get in here? \n");
-          checkVal = 1;
-        }
-        if(*pte & PTE_COW){
-          char *mem = kalloc();
-          if (mem == 0) {
-            cprintf("Getting in cow: return 0 one\n");
-            checkVal = 1;
-          }
-          memmove(mem, (char*)P2V(physical_addr), PGSIZE);
-          int flags = PTE_FLAGS(*pte);
-          flags &= ~PTE_COW;
-          flags |= PTE_W;
-          *pte = V2P(mem) | flags;
-          changeRef(physical_addr, 0);
-          setRef(V2P(mem));
-        }
-        else
-        {
-          *pte |= PTE_W;
-        }
-        lcr3(V2P(curproc->pgdir));
-        checkVal = 2;
-      }
-    }
-    if (checkVal != 2){
-      checkVal = 1;
-    }
-    if (checkVal == 1) { // lazy allocation + copy-on-write
-        struct proc *curproc = myproc();
+    int result = handle_page_fault(curproc, fault_addr, page_addr);
+    
+    if (result != 2) {
         cprintf("Segmentation Fault\n");
         curproc->killed = 1;
-        break;
     }
     break;
+}
 
+// Helper Functions
 
-  //PAGEBREAK: 13
-  default:
-    if(myproc() == 0 || (tf->cs&3) == 0){
-      // In kernel, it must be our mistake.
-      cprintf("unexpected trap %d from cpu %d eip %x (cr2=0x%x)\n",
-              tf->trapno, cpuid(), tf->eip, rcr2());
-      panic("trap");
+// Handle lazy allocation and memory mapping
+int handle_page_fault(struct proc *curproc, uint fault_addr, uint page_addr) {
+    if (is_valid_user_address(fault_addr)) {
+        for (int i = 0; i < curproc->wmapinfo.total_mmaps; i++) {
+            if (is_fault_in_mapped_range(curproc, fault_addr, i)) {
+                return handle_memory_mapping(curproc, fault_addr, page_addr, i);
+            }
+        }
     }
-    // In user space, assume process misbehaved.
-    cprintf("pid %d %s: trap %d err %d on cpu %d "
-            "eip 0x%x addr 0x%x--kill proc\n",
-            myproc()->pid, myproc()->name, tf->trapno,
-            tf->err, cpuid(), tf->eip, rcr2());
-    myproc()->killed = 1;
-  }
+    return handle_cow_or_invalid_page(curproc, fault_addr, page_addr);
+}
+
+// Check if the fault address is within a valid user space range
+int is_valid_user_address(uint addr) {
+    return (addr % PGSIZE == 0) && (addr >= KERNSTART) && (addr < KERNBASE);
+}
+
+// Check if fault_addr falls within the mapped range of the given index
+int is_fault_in_mapped_range(struct proc *curproc, uint fault_addr, int idx) {
+    uint start = curproc->wmapinfo.addr[idx];
+    uint end = start + curproc->wmapinfo.length[idx];
+    return (fault_addr >= start && fault_addr < end);
+}
+
+// Handle memory-mapped files and anonymous mappings
+int handle_memory_mapping(struct proc *curproc, uint fault_addr, uint page_addr, int idx) {
+    char *mem = kalloc();
+    if (!mem) {
+        return 1; // Allocation failure
+    }
+
+    memset(mem, 0, PGSIZE);
+    if (mappages(curproc->pgdir, (void *)page_addr, PGSIZE, V2P(mem), PTE_U | PTE_W) < 0) {
+        kfree(mem);
+        cprintf("mappages failed\n");
+        return 1;
+    }
+
+    if (curproc->wmapinfo.fd[idx] >= 0 && !(curproc->wmapinfo.flags[idx] & MAP_ANONYMOUS)) {
+        struct file *f = curproc->ofile[curproc->wmapinfo.fd[idx]];
+        if (f) {
+            ilock(((struct inode *)f->ip));
+            readi(f->ip, (char *)page_addr, page_addr - curproc->wmapinfo.addr[idx], PGSIZE);
+            iunlock(((struct inode *)f->ip));
+        }
+    }
+
+    curproc->wmapinfo.n_loaded_pages[idx]++;
+    return 2; // Success
+}
+
+// Handle copy-on-write or invalid pages
+int handle_cow_or_invalid_page(struct proc *curproc, uint fault_addr, uint page_addr) {
+    uint *pte = walkpgdir(curproc->pgdir, (void *)page_addr, 0);
+    if (!pte || !(*pte & PTE_P) || !(*pte & PTE_U)) {
+        return 1; // Invalid page
+    }
+
+    uint physical_addr = PTE_ADDR(*pte);
+
+    if (*pte & PTE_COW) {
+        return handle_cow_page(curproc, pte, physical_addr);
+    } else if (!(*pte & PTE_W)) {
+        *pte |= PTE_W;
+        lcr3(V2P(curproc->pgdir)); // Flush TLB
+        return 2; // Success
+    }
+
+    return 1; // Unexpected failure
+}
+
+// Handle copy-on-write pages
+int handle_cow_page(struct proc *curproc, uint *pte, uint physical_addr) {
+    char *mem = kalloc();
+    if (!mem) {
+        cprintf("COW: Allocation failure\n");
+        return 1;
+    }
+
+    memmove(mem, (char *)P2V(physical_addr), PGSIZE);
+    int flags = PTE_FLAGS(*pte) & ~PTE_COW; // Clear COW flag
+    flags |= PTE_W;                        // Add write permission
+    *pte = V2P(mem) | flags;
+
+    changeRef(physical_addr, 0); // Decrement reference count
+    setRef(V2P(mem));            // Increment reference count
+    lcr3(V2P(curproc->pgdir));   // Flush TLB
+
+    return 2; // Success
+}
+
 
   // Force process exit if it has been killed and is in user space.
   // (If it is still executing in the kernel, let it keep running
