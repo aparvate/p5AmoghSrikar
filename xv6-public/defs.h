@@ -128,6 +128,13 @@ uint            wmapHelper(uint, int, int, int);
 int             wunmapHelper(uint);
 uint            va2paHelper(uint);
 int             getwmapinfoHelper(struct wmapinfo*);
+void            cleanup_failed_fork(struct proc *proc);
+void            setup_child_state(struct proc *child);
+void            copy_file_descriptors(struct proc *parent, struct proc *child);
+void            copy_working_directory(struct proc *parent, struct proc *child);
+void            copy_memory_mappings(struct proc *parent, struct proc *child);
+void            copy_mapping_info(struct proc *parent, struct proc *child, int index);
+void            copy_mapping_pages(struct proc *parent, struct proc *child, int index);
 
 // swtch.S
 void            swtch(struct context**, struct context*);

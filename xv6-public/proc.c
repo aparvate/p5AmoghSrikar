@@ -196,86 +196,128 @@ growproc(int n)
   return 0;
 }
 
+// Helper function: copy process state
+int
+copy_process_state(struct proc *parent, struct proc *child)
+{
+    if ((child->pgdir = copyuvm(parent->pgdir, parent->sz)) == 0)
+        return 0;
+
+    child->sz = parent->sz;
+    child->parent = parent;
+    *child->tf = *parent->tf;
+
+    copy_file_descriptors(parent, child);
+    copy_working_directory(parent, child);
+    copy_memory_mappings(parent, child);
+
+    return 1;
+}
+
+// Helper function: cleanup on failure
+void
+cleanup_failed_fork(struct proc *proc)
+{
+    kfree(proc->kstack);
+    proc->kstack = 0;
+    proc->state = UNUSED;
+}
+
+// Helper function: set up the child's state
+void
+setup_child_state(struct proc *child)
+{
+    child->tf->eax = 0; // Clear %eax so fork returns 0 in the child
+}
+
+// Helper function: copy file descriptors
+void
+copy_file_descriptors(struct proc *parent, struct proc *child)
+{
+    for (int i = 0; i < NOFILE; i++) {
+        if (parent->ofile[i])
+            child->ofile[i] = filedup(parent->ofile[i]);
+    }
+}
+
+// Helper function: copy working directory
+void
+copy_working_directory(struct proc *parent, struct proc *child)
+{
+    child->cwd = idup(parent->cwd);
+}
+
+// Helper function: copy memory mappings
+void
+copy_memory_mappings(struct proc *parent, struct proc *child)
+{
+    child->wmapinfo.total_mmaps = parent->wmapinfo.total_mmaps;
+
+    for (int i = 0; i < parent->wmapinfo.total_mmaps; i++) {
+        copy_mapping_info(parent, child, i);
+        copy_mapping_pages(parent, child, i);
+    }
+}
+
+// Helper function: copy mapping info
+void
+copy_mapping_info(struct proc *parent, struct proc *child, int index)
+{
+    child->wmapinfo.addr[index] = parent->wmapinfo.addr[index];
+    child->wmapinfo.length[index] = parent->wmapinfo.length[index];
+    child->wmapinfo.n_loaded_pages[index] = parent->wmapinfo.n_loaded_pages[index];
+    child->wmapinfo.flags[index] = parent->wmapinfo.flags[index];
+
+    if (parent->wmapinfo.fd[index] >= 0) {
+        struct file *file = parent->ofile[parent->wmapinfo.fd[index]];
+        struct file *file_copy = filedup(file);
+        child->wmapinfo.fd[index] = fdalloc(file_copy);
+    }
+}
+
+// Helper function: copy memory-mapped pages
+void
+copy_mapping_pages(struct proc *parent, struct proc *child, int index)
+{
+    uint start_addr = parent->wmapinfo.addr[index];
+    uint end_addr = start_addr + parent->wmapinfo.length[index];
+
+    for (uint addr = start_addr; addr < end_addr; addr += PGSIZE) {
+        uint *pte = walkpgdir(parent->pgdir, (void *)addr, 0);
+        if (pte && (*pte & PTE_P)) {
+            uint flags = PTE_FLAGS(*pte);
+            if (mappages(child->pgdir, (void *)addr, PGSIZE, PTE_ADDR(*pte), flags) < 0) {
+                freevm(child->pgdir);
+                panic("fork: failed to map pages");
+            }
+            changeRef(PTE_ADDR(*pte), 1); // Increment reference count
+        }
+    }
+}
 // Create a new process copying p as the parent.
 // Sets up stack to return as if from system call.
 // Caller must set state of returned proc to RUNNABLE.
 int
 fork(void)
 {
-  int i, pid;
-  struct proc *np;
-  struct proc *curproc = myproc();
+    struct proc *curproc = myproc();
+    struct proc *np = allocproc();
+    if (!np)
+        return -1;
 
-  // Allocate process.
-  if((np = allocproc()) == 0){
-    return -1;
-  }
-
-  // Copy process state from proc.
-  if((np->pgdir = copyuvm(curproc->pgdir, curproc->sz)) == 0){
-    kfree(np->kstack);
-    np->kstack = 0;
-    np->state = UNUSED;
-    return -1;
-  }
-  np->sz = curproc->sz;
-  np->parent = curproc;
-  *np->tf = *curproc->tf;
-
-  // Clear %eax so that fork returns 0 in the child.
-  np->tf->eax = 0;
-
-  for(i = 0; i < NOFILE; i++)
-    if(curproc->ofile[i])
-      np->ofile[i] = filedup(curproc->ofile[i]);
-  np->cwd = idup(curproc->cwd);
-
-  // Copy memory mappings from parent to child (mmap regions)
-  np->wmapinfo.total_mmaps = curproc->wmapinfo.total_mmaps;
-  for (i = 0; i < curproc->wmapinfo.total_mmaps; i++) {
-    // Copy memory mapping information
-    np->wmapinfo.addr[i] = curproc->wmapinfo.addr[i];
-    np->wmapinfo.length[i] = curproc->wmapinfo.length[i];
-    np->wmapinfo.n_loaded_pages[i] = curproc->wmapinfo.n_loaded_pages[i];
-
-    // Copy file info for file-backed mappings.
-    np->wmapinfo.fd[i] = curproc->wmapinfo.fd[i];
-    np->wmapinfo.flags[i] = curproc->wmapinfo.flags[i];
-    if (curproc->wmapinfo.fd[i] >= 0) {
-      struct file *f = curproc->ofile[curproc->wmapinfo.fd[i]];
-      struct file *copy = filedup(f);
-      int newFd = fdalloc(copy);
-      np->wmapinfo.fd[i] = newFd;
+    if (!copy_process_state(curproc, np)) {
+        cleanup_failed_fork(np);
+        return -1;
     }
-    // Map the same virtual -> physical mappings for the child process.
-    for (uint addr = curproc->wmapinfo.addr[i]; addr < curproc->wmapinfo.addr[i] + curproc->wmapinfo.length[i]; addr += PGSIZE) {
-      uint8_ts *pte = walkpgdir(curproc->pgdir, (void *)addr, 0);
-      uint flags = PTE_FLAGS(*pte);
-      if (pte && (*pte & PTE_P)) { // Check if page is present.
-        // Map the page in the child’s page table
-        if (mappages(np->pgdir, (void *)addr, PGSIZE, PTE_ADDR(*pte), flags) < 0) {
-          freevm(pte);
-          return -1;
-        }
-        // Increment reference count for the shared page.
-        changeRef(PTE_ADDR(*pte), 1);
-      }
-      
-    }
-  }
 
-  safestrcpy(np->name, curproc->name, sizeof(curproc->name));
+    safestrcpy(np->name, curproc->name, sizeof(curproc->name));
+    setup_child_state(np);
 
-  pid = np->pid;
+    acquire(&ptable.lock);
+    np->state = RUNNABLE;
+    release(&ptable.lock);
 
-  acquire(&ptable.lock);
-
-  np->state = RUNNABLE;
-
-  release(&ptable.lock);
-
-
-  return pid;
+    return np->pid;
 }
 
 // Exit the current process.  Does not return.
