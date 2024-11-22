@@ -24,9 +24,9 @@ user pointers aren't valid in the kernel
 
 are interrupts turned on in the kernel? yes.
 
-pass curproc explicitly, or implicit from cpu #?
+pass curr_p explicitly, or implicit from cpu #?
   e.g. argument to newproc()?
-  hmm, you need a global curproc[cpu] for trap() &c
+  hmm, you need a global curr_p[cpu] for trap() &c
 
 no stack expansion
 

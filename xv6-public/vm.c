@@ -342,8 +342,6 @@ copyuvm(pde_t *pgdir, uint sz)
     pa = PTE_ADDR(*pte);
     flags = PTE_FLAGS(*pte);
 
-    // Check if the page is writable
-    // Check if the page is writable
     if (!(flags & PTE_P)){
       flags |= PTE_P;
     }
@@ -357,19 +355,11 @@ copyuvm(pde_t *pgdir, uint sz)
 
     *pte = pa | flags;
     lcr3(V2P(myproc()->pgdir));
-    
     changeRef(pa, 1);
-
-    // if((mem = kalloc()) == 0)
-    //   goto bad;
-    // memmove(mem, (char*)P2V(pa), PGSIZE);
     if(mappages(d, (void*)i, PGSIZE, pa, flags) < 0) {
-      //kfree(mem);
       goto bad;
     }
   }
-  //switchkvm();
-  // lcr3(V2P(d));
   return d;
 
 bad:

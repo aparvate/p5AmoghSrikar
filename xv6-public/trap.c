@@ -37,15 +37,15 @@ idtinit(void)
 
 // Helper Functions
 // Handle lazy allocation and memory mapping
-int handle_page_fault(struct proc *curproc, uint fault_addr, uint page_addr) {
+int handle_page_fault(struct proc *curr_p, uint fault_addr, uint page_addr) {
     if (is_valid_user_address(fault_addr)) {
-        for (int i = 0; i < curproc->wmapinfo.total_mmaps; i++) {
-            if (is_fault_in_mapped_range(curproc, fault_addr, i)) {
-                return handle_memory_mapping(curproc, fault_addr, page_addr, i);
+        for (int i = 0; i < curr_p->wmapinfo.total_mmaps; i++) {
+            if (is_fault_in_mapped_range(curr_p, fault_addr, i)) {
+                return handle_memory_mapping(curr_p, fault_addr, page_addr, i);
             }
         }
     }
-    return handle_cow_or_invalid_page(curproc, fault_addr, page_addr);
+    return handle_cow_or_invalid_page(curr_p, fault_addr, page_addr);
 }
 
 // Check if the fault address is within a valid user space range
@@ -54,42 +54,42 @@ int is_valid_user_address(uint addr) {
 }
 
 // Check if fault_addr falls within the mapped range of the given index
-int is_fault_in_mapped_range(struct proc *curproc, uint fault_addr, int idx) {
-    uint start = curproc->wmapinfo.addr[idx];
-    uint end = start + curproc->wmapinfo.length[idx];
+int is_fault_in_mapped_range(struct proc *curr_p, uint fault_addr, int idx) {
+    uint start = curr_p->wmapinfo.addr[idx];
+    uint end = start + curr_p->wmapinfo.length[idx];
     return (fault_addr >= start && fault_addr < end);
 }
 
 // Handle memory-mapped files and anonymous mappings
-int handle_memory_mapping(struct proc *curproc, uint fault_addr, uint page_addr, int idx) {
+int handle_memory_mapping(struct proc *curr_p, uint fault_addr, uint page_addr, int idx) {
     char *mem = kalloc();
     if (!mem) {
         return 1; // Allocation failure
     }
 
     memset(mem, 0, PGSIZE);
-    if (mappages(curproc->pgdir, (void *)page_addr, PGSIZE, V2P(mem), PTE_U | PTE_W) < 0) {
+    if (mappages(curr_p->pgdir, (void *)page_addr, PGSIZE, V2P(mem), PTE_U | PTE_W) < 0) {
         kfree(mem);
         cprintf("mappages failed\n");
         return 1;
     }
 
-    if (curproc->wmapinfo.fd[idx] >= 0 && !(curproc->wmapinfo.flags[idx] & MAP_ANONYMOUS)) {
-        struct file *f = curproc->ofile[curproc->wmapinfo.fd[idx]];
+    if (curr_p->wmapinfo.fd[idx] >= 0 && !(curr_p->wmapinfo.flags[idx] & MAP_ANONYMOUS)) {
+        struct file *f = curr_p->ofile[curr_p->wmapinfo.fd[idx]];
         if (f) {
             ilock(((struct inode *)f->ip));
-            readi(f->ip, (char *)page_addr, page_addr - curproc->wmapinfo.addr[idx], PGSIZE);
+            readi(f->ip, (char *)page_addr, page_addr - curr_p->wmapinfo.addr[idx], PGSIZE);
             iunlock(((struct inode *)f->ip));
         }
     }
 
-    curproc->wmapinfo.n_loaded_pages[idx]++;
+    curr_p->wmapinfo.n_loaded_pages[idx]++;
     return 2; // Success
 }
 
 // Handle copy-on-write or invalid pages
-int handle_cow_or_invalid_page(struct proc *curproc, uint fault_addr, uint page_addr) {
-    uint *pte = walkpgdir(curproc->pgdir, (void *)page_addr, 0);
+int handle_cow_or_invalid_page(struct proc *curr_p, uint fault_addr, uint page_addr) {
+    uint *pte = walkpgdir(curr_p->pgdir, (void *)page_addr, 0);
     if (!pte || !(*pte & PTE_P) || !(*pte & PTE_U)) {
         return 1; // Invalid page
     }
@@ -97,10 +97,10 @@ int handle_cow_or_invalid_page(struct proc *curproc, uint fault_addr, uint page_
     uint physical_addr = PTE_ADDR(*pte);
 
     if (*pte & PTE_COW) {
-        return handle_cow_page(curproc, pte, physical_addr);
+        return handle_cow_page(curr_p, pte, physical_addr);
     } else if (!(*pte & PTE_W)) {
         *pte |= PTE_W;
-        lcr3(V2P(curproc->pgdir)); // Flush TLB
+        lcr3(V2P(curr_p->pgdir)); // Flush TLB
         return 2; // Success
     }
 
@@ -108,7 +108,7 @@ int handle_cow_or_invalid_page(struct proc *curproc, uint fault_addr, uint page_
 }
 
 // Handle copy-on-write pages
-int handle_cow_page(struct proc *curproc, uint *pte, uint physical_addr) {
+int handle_cow_page(struct proc *curr_p, uint *pte, uint physical_addr) {
     char *mem = kalloc();
     if (!mem) {
         cprintf("COW: Allocation failure\n");
@@ -122,7 +122,7 @@ int handle_cow_page(struct proc *curproc, uint *pte, uint physical_addr) {
 
     changeRef(physical_addr, 0); // Decrement reference count
     setRef(V2P(mem));            // Increment reference count
-    lcr3(V2P(curproc->pgdir));   // Flush TLB
+    lcr3(V2P(curr_p->pgdir));   // Flush TLB
 
     return 2; // Success
 }
@@ -174,13 +174,13 @@ trap(struct trapframe *tf)
     break;
   case T_PGFLT: 
       uint fault_addr = rcr2(); // Get the faulting address
-      struct proc *curproc = myproc();
+      struct proc *curr_p = myproc();
       uint page_addr = PGROUNDDOWN(fault_addr);
-      int result = handle_page_fault(curproc, fault_addr, page_addr);
+      int result = handle_page_fault(curr_p, fault_addr, page_addr);
       
       if (result != 2) {
           cprintf("Segmentation Fault\n");
-          curproc->killed = 1;
+          curr_p->killed = 1;
       }
       break;
 

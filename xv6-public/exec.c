@@ -17,7 +17,7 @@ exec(char *path, char **argv)
   struct inode *ip;
   struct proghdr ph;
   pde_t *pgdir, *oldpgdir;
-  struct proc *curproc = myproc();
+  struct proc *curr_p = myproc();
 
   begin_op();
 
@@ -91,15 +91,15 @@ exec(char *path, char **argv)
   for(last=s=path; *s; s++)
     if(*s == '/')
       last = s+1;
-  safestrcpy(curproc->name, last, sizeof(curproc->name));
+  safestrcpy(curr_p->name, last, sizeof(curr_p->name));
 
   // Commit to the user image.
-  oldpgdir = curproc->pgdir;
-  curproc->pgdir = pgdir;
-  curproc->sz = sz;
-  curproc->tf->eip = elf.entry;  // main
-  curproc->tf->esp = sp;
-  switchuvm(curproc);
+  oldpgdir = curr_p->pgdir;
+  curr_p->pgdir = pgdir;
+  curr_p->sz = sz;
+  curr_p->tf->eip = elf.entry;  // main
+  curr_p->tf->esp = sp;
+  switchuvm(curr_p);
   freevm(oldpgdir);
   return 0;
 
