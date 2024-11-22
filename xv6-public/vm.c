@@ -241,7 +241,7 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
   a = PGROUNDUP(oldsz);
   for(; a < newsz; a += PGSIZE){
     mem = kalloc();
-    set_ref(V2P(mem));
+    setRef(V2P(mem));
     if(mem == 0){
       cprintf("allocuvm out of memory\n");
       deallocuvm(pgdir, newsz, oldsz);
@@ -281,8 +281,8 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
       if(pa == 0)
         panic("kfree");
       char *v = P2V(pa);
-      dec_ref(pa);
-      if (get_ref(pa) == 0) {
+      changeRef(pa, 0);
+      if (getRef(pa) == 0) {
         kfree(v);
         *pte = 0;
       }
@@ -385,7 +385,7 @@ copyuvm(pde_t *pgdir, uint sz)
     *pte = pa | flags;
     lcr3(V2P(myproc()->pgdir));
     
-    inc_ref(pa);
+    changeRef(pa, 1);
 
     // if((mem = kalloc()) == 0)
     //   goto bad;

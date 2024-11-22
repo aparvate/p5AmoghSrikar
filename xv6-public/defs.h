@@ -65,10 +65,11 @@ extern uchar    ioapicid;
 void            ioapicinit(void);
 
 // kalloc.c
-void            inc_ref(uint);
-void            dec_ref(uint);
-int             get_ref(uint);
-void            set_ref(uint);
+// void            incrementRef(uint);
+// void            decrementRef(uint);
+void            changeRef(uint, int);
+int             getRef(uint);
+void            setRef(uint);
 char*           kalloc(void);
 void            kfree(char*);
 void            kinit1(void*, void*);

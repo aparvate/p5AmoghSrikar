@@ -47,15 +47,15 @@ idtinit(void)
 //     Handle Copy-On-Write
 //     uint pa = PTE_ADDR(*pte);
     
-//     if(get_ref(pa) > 1){
+//     if(getRef(pa) > 1){
 //       if((mem = kalloc()) == 0){
 //         return FAILED;
 //       }
 //       memmove(mem, (char*)P2V(pa), PGSIZE);
 //       *pte = V2P(mem) | PTE_FLAGS(*pte) | PTE_W | PTE_P; // Add PTE_W flag
 //       *pte &= ~PTE_COW; // Clear the COW flag
-//       dec_ref(pa);
-//       set_ref(pa);
+//       changeRef(pa, 0);
+//       setRef(pa);
 
 //     }else{
 //       *pte != PTE_W;
@@ -165,8 +165,8 @@ lazy_allocate_mapping(uint fault_addr) {
         flags &= ~PTE_COW;
         flags |= PTE_W;
         *pte = V2P(mem) | flags; // Update the PTE to point to the new physical address | TODO: Use mappages() instead?
-        dec_ref(physical_addr);
-        set_ref(V2P(mem));
+        changeRef(physical_addr, 0);
+        setRef(V2P(mem));
       }
       else
       {
@@ -187,11 +187,11 @@ lazy_allocate_mapping(uint fault_addr) {
       //   // Update the page table entry to point to the new physical address
         
       //   lcr3(V2P(curproc->pgdir)); // Refresh the TLB for the new page table entry
-      //   dec_ref(physical_addr); // Decrement the reference count of the old physical page, as it is no longer shared
+      //   changeRef(physical_addr, 0); // Decrement the reference count of the old physical page, as it is no longer shared
 
       //   // Free the old physical page if the reference count is 0, as no other process is sharing it
-      //   // TODO: This could possibly be handled in dec_ref_count() itself
-      //   if (get_ref(physical_addr) == 0) { // If the reference count is 0, free the old page
+      //   // TODO: This could possibly be handled in decrementRef_count() itself
+      //   if (getRef(physical_addr) == 0) { // If the reference count is 0, free the old page
       //     kfree((char*)P2V(physical_addr));
       //   }
       //   cprintf("is it getting in here? first return cow\n");

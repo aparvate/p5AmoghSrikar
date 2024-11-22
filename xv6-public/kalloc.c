@@ -27,36 +27,6 @@ struct {
   struct run *freelist;
 } kmem;
 
-//increment and decrement reference counts
-
-
-void inc_ref(uint pa) {
-  acquire(&kmem.lock);
-  refcount[pa / PGSIZE]++;
-  release(&kmem.lock);
-}
-
-void dec_ref(uint pa) {
-  acquire(&kmem.lock);
-  refcount[pa/PGSIZE]--;
-  release(&kmem.lock);
-}
-
-int get_ref(uint pa) {
-  int count;
-  acquire(&kmem.lock);
-  // Example of how you might use it:
-  count = refcount[pa/PGSIZE];
-  release(&kmem.lock);
-  return count;
-}
-
-void set_ref(uint pa){
-  acquire(&kmem.lock);
-  refcount[pa/PGSIZE] = 1;
-  release(&kmem.lock);
-}
-
 // Initialization happens in two phases.
 // 1. main() calls kinit1() while still using entrypgdir to place just
 // the pages mapped by entrypgdir on free list.
@@ -133,3 +103,39 @@ kalloc(void)
   return (char*)r;
 }
 
+// void incrementRef(uint pa) {
+//   acquire(&kmem.lock);
+//   refcount[pa / PGSIZE]++;
+//   release(&kmem.lock);
+// }
+
+// void decrementRef(uint pa) {
+//   acquire(&kmem.lock);
+//   refcount[pa/PGSIZE]--;
+//   release(&kmem.lock);
+// }
+
+void changeRef(uint pa, int posOrNeg) {
+  acquire(&kmem.lock);
+  if (posOrNeg == 1){
+    refcount[pa / PGSIZE]++;
+  }
+  else{
+    refcount[pa/PGSIZE]--;
+  }
+  release(&kmem.lock);
+}
+
+int getRef(uint pa) {
+  int count;
+  acquire(&kmem.lock);
+  count = refcount[pa/PGSIZE];
+  release(&kmem.lock);
+  return count;
+}
+
+void setRef(uint pa){
+  acquire(&kmem.lock);
+  refcount[pa/PGSIZE] = 1;
+  release(&kmem.lock);
+}
