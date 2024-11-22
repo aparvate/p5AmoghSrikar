@@ -35,37 +35,6 @@ idtinit(void)
   lidt(idt, sizeof(idt));
 }
 
-// int cow(uint fault_addr){
-//   char *mem;
-//   struct proc *p = myproc();
-//   int page_addr = PGROUNDDOWN(fault_addr); // Align fault address to page boundary
-//   uint8_ts *pte = walkpgdir(p->pgdir, (void *)page_addr, 0); // Get the PTE
-//   if(!pte || !(*pte & PTE_P)) {
-//     cprintf("usertrap: invalid access, killing process\n");
-//     p->killed = 1;
-//   } else if(*pte & PTE_COW){
-//     Handle Copy-On-Write
-//     uint pa = PTE_ADDR(*pte);
-    
-//     if(getRef(pa) > 1){
-//       if((mem = kalloc()) == 0){
-//         return FAILED;
-//       }
-//       memmove(mem, (char*)P2V(pa), PGSIZE);
-//       *pte = V2P(mem) | PTE_FLAGS(*pte) | PTE_W | PTE_P; // Add PTE_W flag
-//       *pte &= ~PTE_COW; // Clear the COW flag
-//       changeRef(pa, 0);
-//       setRef(pa);
-
-//     }else{
-//       *pte != PTE_W;
-//     }
-//     lcr3(V2P(p->pgdir)); // Refresh TLB
-//     return SUCCESS;
-//   }
-//   return FAILED;
-// }
-
 // Check if the fault address is part of a mapping
 int
 lazy_allocate_mapping(uint fault_addr) {
@@ -116,15 +85,6 @@ lazy_allocate_mapping(uint fault_addr) {
                   ilock(((struct inode *)f->ip)); // Lock the inode to prevent concurrent writes
                   readi(f->ip, (char*)page_addr, page_addr - start, PGSIZE);
                   iunlock(((struct inode *)f->ip)); // Unlock the inode
-                  // Read the page from the file into memory
-                  // NOTE: No need to add offset to page_addr - start, as we assume offset is 0
-                  // if (readi(((struct inode *)f->ip), mem, page_addr - start, PGSIZE) != PGSIZE) {
-                  //     iunlock(((struct inode *)f->ip)); // Unlock the inode
-                  //     cprintf("readi failed\n");
-                  //     kfree(mem);
-                  //     return 1;
-                  // }
-
                 }
 
                 
@@ -174,34 +134,6 @@ lazy_allocate_mapping(uint fault_addr) {
       }
       lcr3(V2P(curproc->pgdir));
       return SUCCESS;
-
-
-      // if (*pte & PTE_COW) { // Check if the page table entry is present and COW
-      //   cprintf("COW page fault\n");
-
-        
-      //   // NOTE: kalloc() increments the reference count of the new physical page already
-        
-        
-
-      //   // Update the page table entry to point to the new physical address
-        
-      //   lcr3(V2P(curproc->pgdir)); // Refresh the TLB for the new page table entry
-      //   changeRef(physical_addr, 0); // Decrement the reference count of the old physical page, as it is no longer shared
-
-      //   // Free the old physical page if the reference count is 0, as no other process is sharing it
-      //   // TODO: This could possibly be handled in decrementRef_count() itself
-      //   if (getRef(physical_addr) == 0) { // If the reference count is 0, free the old page
-      //     kfree((char*)P2V(physical_addr));
-      //   }
-      //   cprintf("is it getting in here? first return cow\n");
-      //   return 1; // Return success so that we don't proceed with the default page fault handler (lazy allocation)
-      //   // TODO: Double check return
-      // } else if (!(*pte & PTE_W)) { // If the page is not COW and not writable (read-only), it is a segmentation fault
-      //   // If the page is not COW and not writable, it is a segmentation fault
-      //   cprintf("is it getting in here? second lazy allocation return cow\n");
-      //   return 1;
-      // }
     }
 
   }
@@ -255,7 +187,76 @@ trap(struct trapframe *tf)
     break;
   case T_PGFLT:
     uint fault_addr = rcr2(); // Get the faulting address
-    if (lazy_allocate_mapping(fault_addr) == -1) { // lazy allocation + copy-on-write
+
+    struct proc *curproc = myproc();
+
+    uint page_addr = PGROUNDDOWN(fault_addr);
+    int checkVal = 0;
+    if ((((fault_addr) % PGSIZE == 0) && ((fault_addr) >= KERNSTART) && ((fault_addr) < KERNBASE))) {
+      for(int i = 0; i < curproc->wmapinfo.total_mmaps; i++) {
+          uint start = curproc->wmapinfo.addr[i];
+          uint end = start + curproc->wmapinfo.length[i];
+          if (fault_addr >= start && fault_addr < end) {
+              char *mem = kalloc();
+              if (mem == 0) {
+                  checkVal = 1;
+              }
+              memset(mem, 0, PGSIZE);
+              if (mappages(curproc->pgdir, (void *)page_addr, PGSIZE, V2P(mem), PTE_U | PTE_W) < 0) {
+                cprintf("mappages failed\n");
+                kfree(mem);
+                curproc->killed = 1;
+                checkVal = 1;
+              }
+              if (curproc->wmapinfo.fd[i] >= 0 && !(curproc->wmapinfo.flags[i] & MAP_ANONYMOUS)) {
+                  struct file *f = curproc->ofile[curproc->wmapinfo.fd[i]];
+                  if(f){
+                    ilock(((struct inode *)f->ip));
+                    readi(f->ip, (char*)page_addr, page_addr - start, PGSIZE);
+                    iunlock(((struct inode *)f->ip));
+                  }
+              }
+              curproc->wmapinfo.n_loaded_pages[i]++;
+              checkVal = 2;
+          }
+      }
+    }
+    else{
+      uint8_ts *pte = walkpgdir(curproc->pgdir, (void *)page_addr, 0);
+      uint physical_addr = PTE_ADDR(*pte);
+      if (pte && (*pte & PTE_P) && (*pte & PTE_U)) {
+        cprintf("This is the page table entry %x", *pte);
+        if (!(*pte & PTE_COW) && !(*pte & PTE_W))
+        {
+          cprintf("does it get in here? \n");
+          checkVal = 1;
+        }
+        if(*pte & PTE_COW){
+          char *mem = kalloc();
+          if (mem == 0) {
+            cprintf("Getting in cow: return 0 one\n");
+            checkVal = 1;
+          }
+          memmove(mem, (char*)P2V(physical_addr), PGSIZE);
+          int flags = PTE_FLAGS(*pte);
+          flags &= ~PTE_COW;
+          flags |= PTE_W;
+          *pte = V2P(mem) | flags;
+          changeRef(physical_addr, 0);
+          setRef(V2P(mem));
+        }
+        else
+        {
+          *pte |= PTE_W;
+        }
+        lcr3(V2P(curproc->pgdir));
+        checkVal = 2;
+      }
+    }
+    if (checkVal != 2){
+      checkVal = 1;
+    }
+    if (checkVal == 1) { // lazy allocation + copy-on-write
         struct proc *curproc = myproc();
         cprintf("Segmentation Fault\n");
         curproc->killed = 1;
