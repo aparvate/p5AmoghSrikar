@@ -346,33 +346,31 @@ exit(void)
   end_op();
   curproc->cwd = 0;
 
-  // Decrement reference counts and free physical pages if necessary.
   for (uint addr = 0; addr < KERNBASE; addr += PGSIZE) {
-      uint8_ts *pte = walkpgdir(curproc->pgdir, (void *)addr, 0);
-        if (pte && (*pte & PTE_P)) {
-            uint pa = PTE_ADDR(*pte);
-            changeRef(pa, 0);
-            // if(getRef(pa) == 0){
-            //   kfree((char*) pa);
-            //   *pte = 0;
-            // }
-            *pte = 0;
-        }
+      uint *pte = walkpgdir(curproc->pgdir, (void *)addr, 0);
+      if (pte && (*pte & PTE_P)) {
+          uint pa = PTE_ADDR(*pte);
+          changeRef(pa, 0); // Decrease the reference count for the physical page
+          *pte = 0;         // Invalidate the page table entry
+      }
   }
 
   acquire(&ptable.lock);
 
-  // Parent might be sleeping in wait().
+  // Notify the parent process, if it's waiting.
   wakeup1(curproc->parent);
 
-  // Pass abandoned children to init.
-  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-    if(p->parent == curproc){
-      p->parent = initproc;
-      if(p->state == ZOMBIE)
-        wakeup1(initproc);
-    }
+  // Reassign orphaned children to the init process and wake init if needed.
+  for (struct proc *child = ptable.proc; child < &ptable.proc[NPROC]; child++) {
+      if (child->parent == curproc) {
+          child->parent = initproc; // Assign initproc as the new parent
+          if (child->state == ZOMBIE) {
+              wakeup1(initproc);    // Wake initproc for zombie processes
+          }
+      }
   }
+
+  release(&ptable.lock);
 
   // Jump into the scheduler, never to return.
   curproc->state = ZOMBIE;
