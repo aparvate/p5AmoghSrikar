@@ -124,10 +124,10 @@ void            userinit(void);
 int             wait(void);
 void            wakeup(void*);
 void            yield(void);
-uint            wmapHelper(uint, int, int, int);
-int             wunmapHelper(uint);
-uint            va2paHelper(uint);
-int             getwmapinfoHelper(struct wmapinfo*);
+uint            wmap(uint, int, int, int);
+int             wunmap(uint);
+uint            va2pa(uint);
+int             getwmapinfo(struct wmapinfo*);
 
 // swtch.S
 void            swtch(struct context**, struct context*);
