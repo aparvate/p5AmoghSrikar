@@ -35,66 +35,7 @@ idtinit(void)
   lidt(idt, sizeof(idt));
 }
 
-//PAGEBREAK: 41
-void
-trap(struct trapframe *tf)
-{
-  if(tf->trapno == T_SYSCALL){
-    if(myproc()->killed)
-      exit();
-    myproc()->tf = tf;
-    syscall();
-    if(myproc()->killed)
-      exit();
-    return;
-  }
-
-  switch(tf->trapno){
-  case T_IRQ0 + IRQ_TIMER:
-    if(cpuid() == 0){
-      acquire(&tickslock);
-      ticks++;
-      wakeup(&ticks);
-      release(&tickslock);
-    }
-    lapiceoi();
-    break;
-  case T_IRQ0 + IRQ_IDE:
-    ideintr();
-    lapiceoi();
-    break;
-  case T_IRQ0 + IRQ_IDE+1:
-    // Bochs generates spurious IDE1 interrupts.
-    break;
-  case T_IRQ0 + IRQ_KBD:
-    kbdintr();
-    lapiceoi();
-    break;
-  case T_IRQ0 + IRQ_COM1:
-    uartintr();
-    lapiceoi();
-    break;
-  case T_IRQ0 + 7:
-  case T_IRQ0 + IRQ_SPURIOUS:
-    cprintf("cpu%d: spurious interrupt at %x:%x\n",
-            cpuid(), tf->cs, tf->eip);
-    lapiceoi();
-    break;
-case T_PGFLT: {
-    uint fault_addr = rcr2(); // Get the faulting address
-    struct proc *curproc = myproc();
-    uint page_addr = PGROUNDDOWN(fault_addr);
-    int result = handle_page_fault(curproc, fault_addr, page_addr);
-    
-    if (result != 2) {
-        cprintf("Segmentation Fault\n");
-        curproc->killed = 1;
-    }
-    break;
-}
-
 // Helper Functions
-
 // Handle lazy allocation and memory mapping
 int handle_page_fault(struct proc *curproc, uint fault_addr, uint page_addr) {
     if (is_valid_user_address(fault_addr)) {
@@ -184,6 +125,64 @@ int handle_cow_page(struct proc *curproc, uint *pte, uint physical_addr) {
     lcr3(V2P(curproc->pgdir));   // Flush TLB
 
     return 2; // Success
+}
+
+//PAGEBREAK: 41
+void
+trap(struct trapframe *tf)
+{
+  if(tf->trapno == T_SYSCALL){
+    if(myproc()->killed)
+      exit();
+    myproc()->tf = tf;
+    syscall();
+    if(myproc()->killed)
+      exit();
+    return;
+  }
+
+  switch(tf->trapno){
+  case T_IRQ0 + IRQ_TIMER:
+    if(cpuid() == 0){
+      acquire(&tickslock);
+      ticks++;
+      wakeup(&ticks);
+      release(&tickslock);
+    }
+    lapiceoi();
+    break;
+  case T_IRQ0 + IRQ_IDE:
+    ideintr();
+    lapiceoi();
+    break;
+  case T_IRQ0 + IRQ_IDE+1:
+    // Bochs generates spurious IDE1 interrupts.
+    break;
+  case T_IRQ0 + IRQ_KBD:
+    kbdintr();
+    lapiceoi();
+    break;
+  case T_IRQ0 + IRQ_COM1:
+    uartintr();
+    lapiceoi();
+    break;
+  case T_IRQ0 + 7:
+  case T_IRQ0 + IRQ_SPURIOUS:
+    cprintf("cpu%d: spurious interrupt at %x:%x\n",
+            cpuid(), tf->cs, tf->eip);
+    lapiceoi();
+    break;
+case T_PGFLT: {
+    uint fault_addr = rcr2(); // Get the faulting address
+    struct proc *curproc = myproc();
+    uint page_addr = PGROUNDDOWN(fault_addr);
+    int result = handle_page_fault(curproc, fault_addr, page_addr);
+    
+    if (result != 2) {
+        cprintf("Segmentation Fault\n");
+        curproc->killed = 1;
+    }
+    break;
 }
 
 
