@@ -97,7 +97,7 @@ sys_wmap(void)
   uint addr;
   int length, flags, fd;
 
-  if (argint(0, (int*) &addr) < 0 || argint(1, &length) < 0 || argint(2, &flags) < 0 || argint(3, &fd) < 0) {
+  if (argint(0, (int*) &addr) < 0 || argint(1, &length) || argint(2, &flags) || argint(3, &fd) < 0) {
     return FAILED;
   }
   return wmapHelper(addr, length, flags, fd);
@@ -133,7 +133,7 @@ sys_getwmapinfo(void)
 {
   struct wmapinfo *wminfo;
 
-  if (argptr(0, (char **)&wminfo, sizeof(*wminfo)) < 0) {
+  if (argptr(0, (void *)&wminfo, sizeof(*wminfo)) < 0) {
     return FAILED; 
   }
   return getwmapinfoHelper(wminfo);
