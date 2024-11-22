@@ -172,20 +172,20 @@ trap(struct trapframe *tf)
             cpuid(), tf->cs, tf->eip);
     lapiceoi();
     break;
-case T_PGFLT: {
-    uint fault_addr = rcr2(); // Get the faulting address
-    struct proc *curproc = myproc();
-    uint page_addr = PGROUNDDOWN(fault_addr);
-    int result = handle_page_fault(curproc, fault_addr, page_addr);
-    
-    if (result != 2) {
-        cprintf("Segmentation Fault\n");
-        curproc->killed = 1;
-    }
-    break;
-}
+  case T_PGFLT: {
+      uint fault_addr = rcr2(); // Get the faulting address
+      struct proc *curproc = myproc();
+      uint page_addr = PGROUNDDOWN(fault_addr);
+      int result = handle_page_fault(curproc, fault_addr, page_addr);
+      
+      if (result != 2) {
+          cprintf("Segmentation Fault\n");
+          curproc->killed = 1;
+      }
+      break;
+  }
 
-
+  default:
   // Force process exit if it has been killed and is in user space.
   // (If it is still executing in the kernel, let it keep running
   // until it gets to the regular system call return.)
