@@ -95,18 +95,12 @@ int
 sys_wmap(void)
 {
   uint addr;
-  int length;
-  int flags;
-  int fd;
+  int length, flags, fd;
 
-  // Fetch system call arguments
-  if(argint(0, (int *)&addr) < 0 ||
-      argint(1, &length) < 0 ||
-      argint(2, &flags) < 0 ||
-      argint(3, &fd) < 0)
-      return FAILED;
-
-  return wmap(addr, length, flags, fd);
+  if (argint(0, (int*) &addr) < 0 || argint(1, &length) < 0 || argint(2, &flags) < 0 || argint(3, &fd) < 0) {
+    return FAILED;
+  }
+  return wmapHelper(addr, length, flags, fd);
 }
 
 // wunmap
@@ -115,11 +109,10 @@ sys_wunmap(void)
 {
   uint addr;
 
-  // Fetch system call arguments
-  if(argint(0, (int *)&addr) < 0)
-      return FAILED;
-
-  return wunmap(addr);
+  if (argint(0, (int*) &addr) < 0){
+    return FAILED;
+  }
+  return wunmapHelper(addr);
 }
 
 // va2pa
@@ -128,11 +121,10 @@ sys_va2pa(void)
 {
   uint va;
 
-  // Fetch system call arguments
-  if(argint(0, (int *)&va) < 0)
-      return FAILED;
-
-  return va2pa(va);
+  if (argint(0, (int *)&va) < 0) { 
+      return -1;
+  }
+  return va2paHelper(va);
 }
 
 // getwmapinfo
@@ -141,9 +133,8 @@ sys_getwmapinfo(void)
 {
   struct wmapinfo *wminfo;
 
-  // Fetch system call arguments
-  if(argptr(0, (char **)&wminfo, sizeof(*wminfo)) < 0)
-      return FAILED;
-
-  return getwmapinfo(wminfo);
+  if (argptr(0, (char **)&wminfo, sizeof(*wminfo)) < 0) {
+    return FAILED; 
+  }
+  return getwmapinfoHelper(wminfo);
 }
