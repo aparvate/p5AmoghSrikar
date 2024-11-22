@@ -606,7 +606,7 @@ procdump(void)
 
 // wmap system call maps a virtual address to a physical address
 uint
-wmap(uint start_addr, int size, int map_flags, int file_desc) {
+wmapHelper(uint start_addr, int size, int map_flags, int file_desc) {
     // Validate the input flags
     if (!(map_flags & MAP_FIXED) || !(map_flags & MAP_SHARED)) {
         return FAILED;
@@ -706,7 +706,7 @@ void unmap_pages(struct proc *curproc, uint start_addr, uint length) {
 // wunmap system call unmaps a virtual address
 // wunmap system call unmaps a virtual address
 int
-wunmap(uint addr) {
+wunmapHelper(uint addr) {
   struct proc *curproc = myproc();
 
   for(int i = 0; i <16; i++){
@@ -769,7 +769,7 @@ wunmap(uint addr) {
 }
 
 // va2pa returns the physical address of a virtual address
-uint va2pa(uint va) {
+uint va2paHelper(uint va) {
     struct proc *current_process = myproc(); // Get the current process
     uint *page_table_entry;
     uint physical_address;
@@ -789,7 +789,7 @@ uint va2pa(uint va) {
 
 
 // getwmapinfo system call returns the wmapinfo struct for the current process
-int getwmapinfo(struct wmapinfo *user_wmapinfo) {
+int getwmapinfoHelper(struct wmapinfo *user_wmapinfo) {
     struct proc *current_process = myproc(); // Get the current process
 
     if (!user_wmapinfo) {
