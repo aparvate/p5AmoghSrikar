@@ -9,9 +9,7 @@
 #include "mmu.h"
 #include "spinlock.h"
 
-#define MAX_PHYS_PAGES (PHYSTOP / PGSIZE) // Adjust as per the system's max physical pages.
-
-static int refcount[MAX_PHYS_PAGES]; // 1 byte per page for up to 256 references.
+static int references[PHYSTOP / PGSIZE]; // 1 byte per page for up to 256 references.
 
 void freerange(void *vstart, void *vend);
 extern char end[]; // first address after kernel loaded from ELF file
@@ -38,7 +36,7 @@ kinit1(void *vstart, void *vend)
   initlock(&kmem.lock, "kmem");
   kmem.use_lock = 0;
   // for(int i = 0; i < PHYSTOP/PGSIZE; i++){
-  //   refcount[i] = 0;
+  //   references[i] = 0;
   // }
   freerange(vstart, vend);
 }
@@ -96,7 +94,7 @@ kalloc(void)
   r = kmem.freelist;
   if(r){
     kmem.freelist = r->next;
-    //refcount[(uint)r / PGSIZE] = 1; // Initialize reference count.
+    //references[(uint)r / PGSIZE] = 1; // Initialize reference count.
   }
   if(kmem.use_lock)
     release(&kmem.lock);
@@ -106,10 +104,10 @@ kalloc(void)
 void changeRef(uint pa, int posOrNeg) {
   acquire(&kmem.lock);
   if (posOrNeg == 1){
-    refcount[pa / PGSIZE]++;
+    references[pa / PGSIZE]++;
   }
   else{
-    refcount[pa/PGSIZE]--;
+    references[pa/PGSIZE]--;
   }
   release(&kmem.lock);
 }
@@ -117,13 +115,13 @@ void changeRef(uint pa, int posOrNeg) {
 int getRef(uint pa) {
   int count;
   acquire(&kmem.lock);
-  count = refcount[pa/PGSIZE];
+  count = references[pa/PGSIZE];
   release(&kmem.lock);
   return count;
 }
 
 void setRef(uint pa){
   acquire(&kmem.lock);
-  refcount[pa/PGSIZE] = 1;
+  references[pa/PGSIZE] = 1;
   release(&kmem.lock);
 }
