@@ -172,6 +172,12 @@ void            idtinit(void);
 extern uint     ticks;
 void            tvinit(void);
 extern struct spinlock tickslock;
+int             handle_page_fault(struct proc *curproc, uint fault_addr, uint page_addr);
+int             is_valid_user_address(uint addr);
+int             is_fault_in_mapped_range(struct proc *curproc, uint fault_addr, int idx);
+int             handle_memory_mapping(struct proc *curproc, uint fault_addr, uint page_addr, int idx);
+int             handle_cow_or_invalid_page(struct proc *curproc, uint fault_addr, uint page_addr);
+int             handle_cow_page(struct proc *curproc, uint *pte, uint physical_addr);
 
 // uart.c
 void            uartinit(void);
