@@ -9,7 +9,7 @@
 #include "mmu.h"
 #include "spinlock.h"
 
-static int references[PHYSTOP / PGSIZE]; // 1 byte per page for up to 256 references.
+static uchar references[PHYSTOP / PGSIZE]; // 1 byte per page for up to 256 references.
 
 void freerange(void *vstart, void *vend);
 extern char end[]; // first address after kernel loaded from ELF file
