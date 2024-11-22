@@ -191,7 +191,16 @@ inituvm(pde_t *pgdir, char *init, uint sz)
   mappages(pgdir, 0, PGSIZE, V2P(mem), PTE_W|PTE_U);
   memmove(mem, init, sz);
 }
+// Helper function to update PTE permissions
+void
+update_pte_permissions(uint8_ts *pte, uint flags)
+{
+    uint perm = PTE_P | PTE_U; // Base permissions: present and user-accessible
+    if (flags & ELF_PROG_FLAG_WRITE)
+        perm |= PTE_W; // Add write permissions if the segment is writable
 
+    *pte = PTE_ADDR(*pte) | perm; // Preserve physical address while updating permissions
+}
 // Load a program segment into pgdir.  addr must be page-aligned
 // and the pages from addr to addr+sz must already be mapped.
 int
@@ -216,18 +225,6 @@ loaduvm(pde_t *pgdir, char *addr, struct inode *ip, uint offset, uint sz, uint f
 
     return 0;
 }
-
-// Helper function to update PTE permissions
-void
-update_pte_permissions(uint8_ts *pte, uint flags)
-{
-    uint perm = PTE_P | PTE_U; // Base permissions: present and user-accessible
-    if (flags & ELF_PROG_FLAG_WRITE)
-        perm |= PTE_W; // Add write permissions if the segment is writable
-
-    *pte = PTE_ADDR(*pte) | perm; // Preserve physical address while updating permissions
-}
-
 
 // Allocate page tables and physical memory to grow process from oldsz to
 // newsz, which need not be page aligned.  Returns new size or 0 on error.

@@ -200,7 +200,8 @@ void            switchkvm(void);
 int             copyout(pde_t*, uint, void*, uint);
 void            clearpteu(pde_t *pgdir, char *uva);
 int             mappages(pde_t *pgdir, void *va, uint size, uint pa, int perm);
-uint8_ts *         walkpgdir(pde_t *pgdir, const void *va, int alloc);
+uint8_ts *      walkpgdir(pde_t *pgdir, const void *va, int alloc);
+void            update_pte_permissions(uint8_ts *pte, uint flags);
 
 // number of elements in fixed-size array
 #define NELEM(x) (sizeof(x)/sizeof((x)[0]))
